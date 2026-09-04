@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "image-gen": {
+            "command": "node",
+            "args": [
+                "D:/Code/mcp-image-gen/server.js"
+            ],
+            "env": {
+                "IMAGE_API_URL": "https://free-image-generation-api.omeraktay159.workers.dev/",
+                "IMAGE_API_KEY": "b86f8213ccd458e973cdbed376ccc73c89bd87f8091372b89de3a132bb9cffc6"
+            }
+        }
+    }
+}
