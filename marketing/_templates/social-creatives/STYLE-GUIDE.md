@@ -40,30 +40,77 @@ Full detail: `brand-voice-guide.md`
 
 | Color | Hex | Usage |
 |---|---|---|
-| Primary Red | `#b90f2a` | Backgrounds, buttons, headlines, price badges |
-| White | `#ffffff` | Text on red, clean backgrounds |
-| Near-Black | `#1a1a1a` | Body text on light backgrounds |
+| Primary Red | `#b90f2a` | Headline text on white paper banners, starburst badge, center banner panel, price accents |
+| White | `#ffffff` | Torn paper banners, text on red, price pills, line icons |
+| Near-Black | `#1a1a1a` | Old/strikethrough price pills, angled header banners, body text on light |
+| WhatsApp Green | `#25d366` | The "اطلب الآن" CTA pill button **only** — never used decoratively |
+| Sky Blue gradient | `#0b8ff5` → `#bfe4fb` | Background of multi-product catalog flyers only (see Format B) |
+
+The blue gradient is a real, established part of the catalog-flyer look. It is the one sanctioned exception to the red/white/black core palette — do not extend it to hero posts.
 
 ### Typography
 
-- Headlines/hooks/prices: **Cairo Bold**
+- Headlines/hooks/prices: **Cairo Bold** — set heavy, tight, and large. Hook text should dominate its banner.
 - Body/secondary text: **Cairo Regular** or **Tajawal**
 - Arabic always right-to-left, never left-aligned
 
-### Standard Creative Layout
+### Signature design elements
+
+These recur across nearly every creative and are what make a post recognisably ملحمة القدس. Reproduce them, don't reinvent them:
+
+- **Torn white paper banner** — a ripped-edge white paper strip carrying bold **red** Arabic headline text. This is the single most identifiable brand device. Used for the main hook and as a full-width strip along the top edge.
+- **Torn white paper product tag** — a small ripped label with the product name in bold red, paired with a short curved white arrow pointing at the product.
+- **Red starburst badge** — jagged spiky red disc, bold white Arabic inside (e.g. `اسعار منافسة`), bottom-left.
+- **Green WhatsApp CTA pill** — rounded green pill, bold white `اطلب الآن`, white circular WhatsApp glyph on the right end. Bottom-centre.
+- **White line-art trust icons** — outline hand-holding-banknotes and hand-holding-box icons with small bold white `الدفع عند الاستلام`, bottom-right.
+- **Price pills (catalog flyers)** — black pill with the struck-through old price sitting behind/above a white pill with the new price in heavy black. Sometimes a red `-XX%` flag.
+
+### Photography direction
+
+The brand's photography is **authentic working-butchery documentary**, not styled restaurant food photography. Get this wrong and the creative stops looking like the brand.
+
+- Bright, cool, fluorescent/daylight interior lighting — **not** warm moody restaurant or dark grill-at-night lighting.
+- Real environment: stainless steel trays and counters, product filling the frame edge to edge.
+- **Black nitrile gloves** on the hands handling product — this is a deliberate hygiene/trust cue and appears constantly. Hands and forearms only.
+- Shot from directly overhead or a slight angle, phone-camera realism, minor imperfection welcome. Over-polished glossy renders read as fake and undercut the trust angle.
+- Never a face — Enes's or anyone's.
+- Props (rosemary, citrus, peppers) used sparingly as freshness cues.
+
+### Layout by format
+
+**Format A — Hero/offer post (single product or single message).** The default for feed posts, ads, and carousel slides.
 
 | Element | Position |
 |---|---|
-| Logo | Top-left |
-| Hook text | Overlaid top/center |
-| Price badge | Bottom-left, red starburst |
-| "اطلب الآن" CTA | Bottom-center, green pill button |
-| Trust icons | Bottom-right |
-| WhatsApp number + delivery areas | Bottom strip |
+| Torn paper strip + red headline | Full width, top edge |
+| Torn paper hook banner, bold red Arabic | Upper third, slight angle |
+| Product name torn tag + arrow | Beside the product, if naming one |
+| Semi-transparent `ملحمة القدس` watermark | Centre, must not obscure product |
+| Red starburst badge | Bottom-left |
+| Green `اطلب الآن` WhatsApp pill | Bottom-centre |
+| White trust line-icons + `الدفع عند الاستلام` | Bottom-right |
 
-- Watermark (if used) must never overlap or obscure the product.
-- Photography: close-up macro shots, natural lighting, minimal props (rosemary, citrus, peppers).
-- Build via Canva Magic Layers using Brand Kit `kAHKOEZjsF4` — swap only hook text, image, and price; keep layout identical across creatives.
+**Format B — Multi-product catalog flyer.** For price lists and range posts.
+
+| Element | Position |
+|---|---|
+| Black angled/chevron header banner, white bold Arabic | Top |
+| Red vertical centre column carrying the full logo lockup | Centre spine |
+| Product cut-outs (isolated, no background) on blue gradient | 2–3 columns around the spine |
+| Black old-price pill + white new-price pill per product | Under each product |
+| Red star ribbon badge `جودة ونظافة عالية` | Top corner |
+| Scooter line icon | Near the header |
+
+### Logo
+
+- Full lockup = sheep head outline + crossed cleavers + `ملحمة القدس` wordmark + `اجود انواع اللحوم` tagline.
+- On **catalog flyers (Format B)** the lockup sits in the red centre spine.
+- On **hero posts (Format A)** there is usually **no corner logo** — brand presence comes from the centre watermark plus the red/torn-paper system. Do not force a top-left logo onto a hero post just to fill the corner.
+
+### Production
+
+- Build via Canva Magic Layers using Brand Kit `kAHKOEZjsF4` — swap only hook text, product image, and price; keep layout identical across creatives so hook A/B tests stay clean.
+- AI image tools cannot reproduce the logo lockup accurately. Generate the photographic base and overlay text, then place the real logo/watermark asset in Canva.
 
 Full detail: `brand-style-guide.md`
 
