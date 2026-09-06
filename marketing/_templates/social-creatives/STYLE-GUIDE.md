@@ -50,19 +50,37 @@ The blue gradient is a real, established part of the catalog-flyer look. It is t
 
 ### Typography
 
-- Headlines/hooks/prices: **Cairo Bold** — set heavy, tight, and large. Hook text should dominate its banner.
+- Headlines/hooks/prices: **Cairo Bold** — set heavy and tight. On a hero post the hook sits **inside a compact torn-paper label**, not spanning the frame; size it to the label, not the canvas.
 - Body/secondary text: **Cairo Regular** or **Tajawal**
 - Arabic always right-to-left, never left-aligned
+
+### Reference calibration (measured off `social/_references/`)
+
+The three layout references (`1.png`, `2.png`, `3.png`) set the target proportions; `background.png` is a **photography-mood** reference only, no layout. Figures are % of canvas (height unless noted). `compose_slide.py` defaults are tuned to these:
+
+| Element | Target | `compose_slide.py` token |
+|---|---|---|
+| Hook / product-name label | white **torn paper** patch, **red** Cairo Bold text; glyph height **5–6% H**; patch **7–12% H**, **25–55% W** (hugs the text), tilted ~−3°, soft drop shadow; sits **beside the product**, not across the top | `--banner-width hug` (default), `--banner-color #ffffff`, `--headline-color #b90f2a`, `--headline-scale 0.052`, `--label-x/--label-y/--label-tilt` |
+| Curved pointer arrow | short white hand-drawn-style arc from the label to the cut it names | `--pointer X0 Y0 X1 Y1` |
+| Logo | ~**13% W**, in a corner (refs use **top-right** and **bottom-right**), **no backing disc**, faint shadow only | `--logo`, `--logo-position tr` (default), `--logo-badge-color none` (default), `--logo-scale 0.13` |
+| Contact line | small white text **on the photo, bottom-left, no bar**; ~**1.9% H**/line, drop-shadowed | `--footer`, `--footer-bg none` (default), `--footer-align left` (default), `--footer-scale 0.019` |
+| Red starburst badge | ~**20–22% W** diameter, bottom-left | `--badge-text`, `--badge-scale 0.11` |
+| Green WhatsApp CTA pill | ~**40–45% W × 6% H**, bottom-centre — **kept prominent** even though the refs de-emphasise their CTA (our funnel needs it obvious) | `--cta` |
+| Photo coverage | **~100% full-bleed** — no top strip, no footer bar eating the frame | (removing the bars is the default now) |
+| Outer margin | ~**4.5% W** | `--margin-scale 0.045` |
+
+**Deliberate deviation from the references:** their CTA is a barely-visible phone number. Ours stays a full green pill — the CTA is the one element we do **not** shrink toward the references.
 
 ### Signature design elements
 
 These recur across nearly every creative and are what make a post recognisably ملحمة القدس. Reproduce them, don't reinvent them:
 
-- **Torn white paper banner** — a ripped-edge white paper strip carrying bold **red** Arabic headline text. This is the single most identifiable brand device. Used for the main hook and as a full-width strip along the top edge.
-- **Torn white paper product tag** — a small ripped label with the product name in bold red, paired with a short curved white arrow pointing at the product.
-- **Red starburst badge** — jagged spiky red disc, bold white Arabic inside (e.g. `اسعار منافسة`), bottom-left.
-- **Green WhatsApp CTA pill** — rounded green pill, bold white `اطلب الآن`, white circular WhatsApp glyph on the right end. Bottom-centre.
+- **Torn white paper label** — a small ripped-edge white paper patch carrying bold **red** Arabic text, tilted slightly, with a soft shadow. This is the single most identifiable brand device. It holds the hook (≤ ~4 words reads best) or a product name, and sits **beside the product it's about** — *not* as a full-width strip across the top edge. (A full-width strip is still available via `--banner-width full` for legacy layouts, but it is no longer the default look.)
+- **Curved white arrow** — a short hand-drawn-feel arc from the torn label to the specific cut or detail it names. Pair it with the label whenever the label names one product.
+- **Red starburst badge** — jagged spiky red disc, bold white Arabic inside (e.g. `اسعار منافسة`), bottom-left, ~20% of width.
+- **Green WhatsApp CTA pill** — rounded green pill, bold white `اطلب الآن`, white circular WhatsApp glyph on the right end. Bottom-centre. Stays prominent.
 - **White line-art trust icons** — outline hand-holding-banknotes and hand-holding-box icons with small bold white `الدفع عند الاستلام`, bottom-right.
+- **Contact line on the photo** — WhatsApp number in small white text bottom-left, drawn straight on the photo with a drop shadow, **no black bar behind it**.
 - **Price pills (catalog flyers)** — black pill with the struck-through old price sitting behind/above a white pill with the new price in heavy black. Sometimes a red `-XX%` flag.
 
 ### Photography direction
@@ -82,13 +100,16 @@ The brand's photography is **authentic working-butchery documentary**, not style
 
 | Element | Position |
 |---|---|
-| Torn paper strip + red headline | Full width, top edge |
-| Torn paper hook banner, bold red Arabic | Upper third, slight angle |
-| Product name torn tag + arrow | Beside the product, if naming one |
-| Semi-transparent `ملحمة القدس` watermark | Centre, must not obscure product |
-| Red starburst badge | Bottom-left |
-| Green `اطلب الآن` WhatsApp pill | Bottom-centre |
-| White trust line-icons + `الدفع عند الاستلام` | Bottom-right |
+| Torn paper label, bold red Arabic hook/name | Beside the product — upper-left by default, tilted ~−3°, hugs the text (7–12% H). **Not** a full-width top strip. |
+| Curved white arrow | From the label to the cut it names |
+| Semi-transparent `ملحمة القدس` watermark | Centre, must not obscure product (optional — `--watermark`) |
+| Small logo lockup | One corner, top-right default, ~13% W, no backing disc |
+| Red starburst badge | Bottom-left, ~20% W |
+| Green `اطلب الآن` WhatsApp pill | Bottom-centre, kept prominent |
+| Contact line (WhatsApp number) | Bottom-left, small white text on the photo, no bar |
+| White trust line-icons + `الدفع عند الاستلام` | Bottom-right (when used) |
+
+Photo runs full-bleed behind all of it. See **Reference calibration** above for the measured ratios.
 
 **Format B — Multi-product catalog flyer.** For price lists and range posts.
 
@@ -105,12 +126,14 @@ The brand's photography is **authentic working-butchery documentary**, not style
 
 - Full lockup = sheep head outline + crossed cleavers + `ملحمة القدس` wordmark + `اجود انواع اللحوم` tagline.
 - On **catalog flyers (Format B)** the lockup sits in the red centre spine.
-- On **hero posts (Format A)** there is usually **no corner logo** — brand presence comes from the centre watermark plus the red/torn-paper system. Do not force a top-left logo onto a hero post just to fill the corner.
+- On **hero posts (Format A)** a **small** corner lockup (~13% W, no backing disc, top-right or bottom-right) is fine and matches the reference creatives — keep it unobtrusive so it doesn't compete with the photo. A centre watermark is an alternative, not a requirement. What to avoid is a large logo on a white circular badge dominating a corner.
+- Use `white logo.png` on dark/busy areas, `black logo.png` on light areas.
 
 ### Production
 
-- Build via Canva Magic Layers using Brand Kit `kAHKOEZjsF4` — swap only hook text, product image, and price; keep layout identical across creatives so hook A/B tests stay clean.
-- AI image tools cannot reproduce the logo lockup accurately. Generate the photographic base and overlay text, then place the real logo/watermark asset in Canva.
+- **Primary path — `compose_slide.py`** (in `.claude/skills/social-creative-designer/scripts/`): generate a text-free photographic background, then run the script to lay on the torn label, arrow, logo, starburst, CTA and contact line. It shapes Arabic correctly (HarfBuzz) and its defaults are calibrated to `social/_references/`. On Windows set `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` and pass absolute paths. Key flags: `--headline` (hook, ≤ ~4 words reads best), `--banner-color/--headline-color` (default white paper / red text), `--label-x/--label-y/--label-tilt`, `--pointer X0 Y0 X1 Y1`, `--logo` + `--logo-position {tl,tr,bl,br}`, `--badge-text`, `--cta`, `--footer`. `--banner-width full` restores the legacy full-width top strip.
+- **Canva** (Brand Kit `kAHKOEZjsF4`) is the fallback for work the script can't do — swap only hook text, product image, and price; keep layout identical across creatives so hook A/B tests stay clean. Note the Canva MCP connector mis-shapes Arabic and can't place the local logo — hand-build in the editor if using it.
+- AI image tools cannot reproduce the logo lockup accurately. Generate the photographic base only; the script (or Canva) places the real logo asset.
 
 Full detail: `brand-style-guide.md`
 

@@ -12,7 +12,6 @@ Marketing team workspace for **ملحمة القدس (Quds Butchery)** — a Wha
 | `ads/` | Ad copy, creative briefs, campaign definitions |
 | `social/` | Post captions, reels scripts, comment/DM replies |
 | `pages/` | Landing page and long-form page copy |
-| `presentations/` | Decks |
 | `reports/` | Weekly/monthly performance reports |
 | `research/` | Market, competitor, and audience research |
 | `seo/` | Keyword and search content |
@@ -58,6 +57,38 @@ Always load `_context/brand-voice-guide.md` and `_context/brand-content.md` — 
 - **Three messaging pillars,** present in some form across all content: توصيل سريع لباب بيتك · الدفع عند الاستلام · طازج لباب بيتك
 - **Tone:** warm and familiar like a trusted neighbor, never corporate. Confident about pricing and quality, never defensive or evasive. Emojis in moderation.
 - **Palette:** Primary Red `#b90f2a`, White `#ffffff`, Near-Black `#1a1a1a`. Type: Cairo Bold for hooks/prices, Cairo Regular or Tajawal for body.
+
+## Delegating to Sub-Agents
+
+Five sub-agents live in `.claude/agents/`. Each has a narrow, non-overlapping role and pulls brand facts from `_context/` at runtime. Route to one only when the task is genuinely agent-shaped; otherwise do it directly.
+
+### When NOT to delegate
+
+Do the work yourself — no sub-agent — when the task is a **single, specific action that one skill or a direct edit can complete**:
+
+- A one-off caption, single ad variation, one comment/DM reply, a quick copy tweak or proofread → handle directly (load `_sop/sop-content-production.md` or `_sop/sop-comment-and-dm-replies.md` and write it).
+- "Reply to this comment," "fix this line," "shorten this caption," "translate this to Turkish," "what does the SOP say about X" → direct.
+- Rendering one carousel from copy that already exists and is approved → invoke the `social-creative-designer` skill directly.
+- Reading a saved report/research file and answering a question about it → direct.
+
+### When TO delegate
+
+Route to a sub-agent when the task is **open-ended, spans multiple skills, or needs the agent to synthesize inputs and make decisions across steps** — and dispatch matches the request:
+
+| Route to | When the request is | Not for |
+|---|---|---|
+| `market-researcher` | Research competitors, market conditions, pricing benchmarks, audience/cultural signals, or platform/format trends — anything needing external web research synthesized into recommendations. Output lands in `research/`. | Writing copy, design, campaign decisions, changing the pricing file. |
+| `data-analyst` | Pull and interpret Meta performance data, benchmark against baselines, reconcile ad results vs. real orders, produce the weekly report. Output lands in `reports/`. | Any change to a live campaign; copy; creative; comment replies. |
+| `campaign-strategist` | Decide what to promote and when, turn that into a campaign plan (objective, audience, budget, timeline), and create/update/activate/pause campaigns, ad sets, ads, or budgets per SOP. The **only** agent that touches live campaigns. Briefs land in `ads/`. | Writing final copy; designing the asset; pulling raw data (consumes `data-analyst`'s saved report). |
+| `content-creator` | Turn one brief/goal into content across whichever formats it needs — captions, posts, short-form scripts, lead magnets, page copy — **and** produce finished rendered social carousels/graphics end to end via the `social-creative-designer` skill. | Campaign/budget management; performance data; Canva template work; live comment/DM replies. |
+| `creative-designer` | Canva-based creative only — Brand Kit template work, one-off/physical/bilingual designs, campaign-specific ad creative attached in Ads Manager. | Standard rendered social carousels/graphics (that's `content-creator`); strategy; final captions. |
+| `community-manager` | A **batch/queue** of comments or DMs to work through — classify each against the approved reply library in `_sop/sop-comment-and-dm-replies.md`, draft language-matched replies, flag escalations to Enes. | A single reply (do it directly); campaign strategy; original marketing copy; creative. |
+
+### Orchestration notes
+
+- Agents **cannot invoke each other.** They hand off through saved files: `market-researcher` → `research/`, `data-analyst` → `reports/`, `campaign-strategist` → briefs in `ads/`, consumed downstream. When a workflow needs several agents (e.g. research → report → campaign plan → copy → creative), dispatch them in sequence yourself and pass each one the path to the prior output.
+- A full campaign launch is multi-agent: `campaign-strategist` writes the brief, `content-creator` writes copy + carousel, `creative-designer` handles any Canva-specific asset, `campaign-strategist` puts it live.
+- If the right agent's expected input file doesn't exist yet, either run the upstream agent first or tell the user it's missing — don't have the downstream agent invent the data.
 
 ## Writing Skills and Agents for This Project
 

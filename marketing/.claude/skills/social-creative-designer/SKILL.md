@@ -1,15 +1,22 @@
 ---
 name: social-creative-designer
-description: Designs and generates carousel-style social media graphics or single social visuals as PNG images, using the Nano Banana MCP (mcp__nanobanana__generate_image) for image generation. Use this whenever the user asks for carousel slides, a swipe post, an Instagram/LinkedIn/Facebook carousel, a single social graphic or static post image, or wants a topic/piece of content turned into visual slides — even if they don't say "carousel" explicitly, e.g. "make some slides about X," "turn this into a post," "design a graphic for Y," or "I need visuals for the new promo." Make sure to trigger this skill any time the deliverable is a rendered image file rather than text copy.
+description: Designs and generates carousel-style social media graphics or single social visuals as PNG images — AI-generated photography composited with brand text (headline, CTA, footer) that is rendered separately for guaranteed-correct text, including right-to-left scripts like Arabic. Use this whenever the user asks for carousel slides, a swipe post, an Instagram/LinkedIn/Facebook carousel, a single social graphic or static post image, or wants a topic/piece of content turned into visual slides — even if they don't say "carousel" explicitly, e.g. "make some slides about X," "turn this into a post," "design a graphic for Y," or "I need visuals for the new promo." Make sure to trigger this skill any time the deliverable is a rendered image file rather than text copy.
 ---
 
 # Social Creative Designer
 
-Turns a topic or piece of content into a set of on-brand social media visuals — carousel slides or a single static graphic — rendered as PNG files via the Nano Banana MCP. This skill defines the *workflow*: it pulls all brand specifics (colors, fonts, voice, CTA, contact info, style direction) from the workspace's `_context/` and `_templates/` folders at runtime, so it stays reusable across brands as long as those folders exist.
+Turns a topic or piece of content into a set of on-brand social media visuals — carousel slides or a single static graphic — rendered as PNG files. This skill defines the *workflow*: it pulls all brand specifics (colors, fonts, voice, CTA, contact info, style direction) from the workspace's `_context/` and `_templates/` folders at runtime, so it stays reusable across brands as long as those folders exist.
 
 ## Why this shape
 
-Image models are good at composition and mood but unreliable at rendering non-Latin script correctly, and they have no memory of "what this brand looks like" unless you tell them every time. So the workflow below front-loads brand grounding (read the guides, look at real reference creatives) before writing a single prompt, and it ends with a human-legibility check on any rendered text — skipping either step is what produces off-brand or garbled output.
+Image models are good at composition and mood but unreliable at rendering non-Latin script correctly — this isn't specific to one provider, it's true of every mainstream image-generation model, because contextual letter-joining and right-to-left layout are underrepresented in training data compared to Latin text. Asking a model to bake Arabic (or any RTL/complex script) headline text directly into the image is a gamble that fails often enough to not be worth taking on a brand's actual content.
+
+So this skill splits the work in two:
+
+1. **AI image generation produces the photography only** — no text in the prompt at all. This is what image models are actually good at, and it's the one part of this workflow that needs whatever image-generation tool (MCP or otherwise) is currently available.
+2. **The bundled `scripts/compose_slide.py` draws the brand's text on top** of that photography — headline banner, CTA pill, footer strip, logo — using real HarfBuzz text shaping (the same engine browsers use), not Pillow's default text drawing or an AI model's guess. This guarantees correct letter-joining and right-to-left order every time.
+
+The workflow also front-loads brand grounding (read the guides, look at real reference creatives) before writing a single prompt — skipping that is what produces off-brand output even when the text is fine.
 
 ## Step 1 — Clarify the brief
 
@@ -18,7 +25,7 @@ From the user's request, pin down:
 - **Topic/content**: what the slides are about (a product, an offer, an educational point, a behind-the-scenes story, etc.)
 - **Mode**: carousel (default) or single static image
 - **Slide count**: default **3** for a carousel unless the user specifies otherwise
-- **Aspect ratio**: default **4:5** (portrait). Also supports **1:1**, **3:4**, and landscape **1.91:1** if requested — see the Aspect Ratio Mapping table in Step 6, since Nano Banana's supported ratio list doesn't include 1.91:1 natively.
+- **Aspect ratio**: default **4:5** (portrait). Also supports **1:1**, **3:4**, and landscape **1.91:1** if requested.
 - **Platform**: default **Instagram**. Also supports LinkedIn, Facebook, and others — platform mostly affects tone/format conventions (e.g. LinkedIn skews less emoji-heavy) more than the generation mechanics.
 
 If any of these is genuinely ambiguous and would send the work in a materially different direction (e.g. is this a promo or an educational series?), ask. Otherwise apply the defaults and proceed — don't stall the whole workflow on minor preferences.
@@ -55,50 +62,58 @@ For a carousel, structure content across slides like this:
 
 For single-image mode, compress this into one frame: apply the same "bold hook" direction from slide 1, adapted to carry a bit more supporting context since there's no follow-up slide.
 
-Write out the actual on-slide copy for each slide now, in the brand's voice and language rules from Step 2, before moving to image prompts — it's much easier to fix wording as text than to regenerate an image over a phrasing tweak.
+**Write the on-slide copy through a copy specialist, not inline.** If the workspace defines a content/copywriting agent (check `.claude/agents/`), delegate the actual headline/subtext/bullet/CTA writing to it rather than drafting it yourself — that's what such an agent exists for, and copy written without that step tends to read as generic on-brand phrasing rather than something that actually earns a click. Tell it explicitly whether this is a **paid ad** or an organic post: paid delivery needs a real scroll-stopping hook and a genuine reason to act now (a rules-compliant urgency/scarcity angle — e.g. limited daily prep quantity, occasion framing — never a fake countdown or a price/discount not confirmed with the brand owner), not just tone-matched sentences. If no such agent exists in the workspace, write the copy yourself but hold it to that same bar before moving on: could a stranger scrolling past actually feel the hook, or does it just describe the product?
 
-## Step 5 — Build the image prompt for each slide
+Decide which slides need which elements (a mid-value slide might skip the CTA pill; the final slide should have it prominently) once the copy is set.
 
-Each Nano Banana prompt should translate the brand spec into concrete visual instruction. Include:
+## Step 5 — Generate the background photography
 
-- **Subject/scene**: what's actually depicted (product shot, hands-on process, lifestyle moment, abstract graphic panel — whatever fits the slide's content)
-- **Composition & layout**: where text blocks, badges, logos, and CTA elements sit, based on the style direction chosen in Step 3
-- **Exact on-slide copy**: quote the precise text from Step 4 that should render on the image, and specify its script/language explicitly (e.g. "Arabic text, right-to-left, reading: ...")
-- **Color palette**: pull the hex values from the brand style guide rather than describing colors loosely ("the brand's primary red, #______")
-- **Typography feel**: weight/style described in words (Nano Banana can't load a specific font file, so describe it — e.g. "bold, rounded sans-serif headline type")
-- **Aspect ratio**: pass via the `aspect_ratio` parameter, not just described in the prompt (see Step 6)
-- **What to avoid**: use `negative_prompt` for things the brand rules forbid appearing (e.g. faces, competing logos, text in the wrong language)
+Write an image-generation prompt per slide/frame that describes **photography only — no text, no logos, no UI elements, no badges**. That all gets added in Step 6. Include:
 
-If the brand rules require specific fixed elements every creative needs (a phone number, a fixed CTA phrase, messaging pillars) work them into the copy naturally rather than listing them as a disconnected footer, unless the reference style shows them as a footer/badge convention.
+- **Subject/scene**: what's actually depicted (product shot, hands-on process, lifestyle moment — whatever fits the slide's content)
+- **Composition**: leave clear, uncluttered space where the headline banner, CTA pill, and footer will land (based on the style direction from Step 3) — e.g. "plenty of negative space in the upper third" if the headline banner goes there
+- **Color mood**: nudge the palette toward the brand's colors where natural (warm reds, natural lighting) without expecting exact hex-accurate output from a photo generator
+- **What to avoid**: faces (if the brand forbids showing a specific person), competing text, watermarks, logos
 
-For visual consistency across a carousel, generate slide 1 first, then pass it as `input_image_path_1` (alongside the new slide's prompt) when generating slides 2+, asking the model to keep the same visual system (palette, layout grid, typography style) while changing the content. This keeps a set feeling like one design instead of three unrelated images.
+Use whatever image-generation tool is currently available (check connected MCP tools — Nano Banana, Higgsfield, Gamma's `generate_image`, or others vary by session). Request the aspect ratio the tool supports; if it doesn't expose the exact ratio requested in Step 1, note the substitution to the user rather than silently picking something else, and pick the closest available ratio (e.g. 4:5 or 1:1 over an unsupported 1.91:1).
 
-## Step 6 — Generate with Nano Banana
+**If no image-generation tool is available or every call fails, stop and tell the user explicitly** that AI-generated images could not be produced — don't fall back to describing images in text or producing placeholder output as if it were a deliverable.
 
-Call `mcp__nanobanana__generate_image` for each slide/frame with:
+For visual consistency across a carousel, either reuse one generated background/scene style across all slides (varying subject slightly) or pass an earlier slide as a reference/conditioning image if the tool supports it, so the set reads as one design system rather than unrelated photos.
 
-- `prompt`: the full prompt built in Step 5
-- `aspect_ratio`: mapped from the requested ratio (table below)
-- `negative_prompt`: as needed
-- `input_image_path_1`: the prior slide, for carousel consistency (Step 5), or a chosen reference creative for style grounding on slide 1
-- `output_path`: a real path in the workspace (Step 7), not the default temp location
+## Step 6 — Composite the brand text
 
-**Aspect ratio mapping** (Nano Banana's supported set doesn't include every ratio this skill offers):
+Run `scripts/compose_slide.py` on each background image to add the headline, CTA, footer, and logo. It shapes text with HarfBuzz and rasterizes with FreeType — this is what makes Arabic (or any RTL script) come out correctly instead of the tofu-boxes/garbled-order failure you get from Pillow's default text drawing or an image model's guess.
 
-| Requested | Pass to `aspect_ratio` |
-|---|---|
-| 4:5 (default) | `4:5` |
-| 1:1 | `1:1` |
-| 3:4 | `3:4` |
-| 1.91:1 (landscape) | `16:9` — closest supported ratio; note the substitution to the user since it isn't an exact match |
+```bash
+python scripts/compose_slide.py \
+  --background path/to/generated-photo.png \
+  --output social/creatives/<date>-<slug>/slide-1-hook.png \
+  --headline "اللحمة علينا والشوي عليك" \
+  --headline-color "#ffffff" \
+  --banner-color "#b90f2a" \
+  --cta "اطلب الآن" \
+  --cta-color "#25D366" \
+  --footer "توصيل سريع لباب بيتك · الدفع عند الاستلام" \
+  --logo path/to/logo.png
+```
 
-If the Nano Banana MCP (or any configured image generation tool) is unavailable or a call fails outright, **stop and tell the user explicitly** that MCP-generated images could not be produced — don't fall back to describing images in text or producing placeholder output as if it were a deliverable.
+Pull colors from the brand style guide (Step 2), not the defaults shown above — the defaults are just this brand's colors and won't be right for another. Run `python scripts/compose_slide.py --help` for the full option list; omit any flag for elements a given slide doesn't need (e.g. a mid-carousel value slide might skip `--cta`).
+
+**A flat rectangle banner reads as a template, not a design.** Before settling for the plain form above, check whether the brand's reference creatives (Step 3) use devices like a torn-paper banner edge, a checkmark bullet list, or a starburst urgency/callout badge — this script supports all three, and using them is usually the difference between "on-brand" and actually looking designed:
+
+- `--torn-banner` — jagged banner edge instead of a straight rectangle
+- `--bullets "line one" "line two" "line three"` (with `--bullets-color` / `--check-color`) — a right-aligned checkmark list under the banner, for value/trust slides
+- `--badge-text "..."` (with `--badge-color` / `--badge-text-color`) — a starburst badge, e.g. for a genuine urgency/scarcity line (never a fake countdown or an unconfirmed price)
+- `--logo path/to/logo.png` (with `--logo-badge-color`) — places the logo top-left inside a backing-color circle so it reads on any photo; the script auto-detects and strips a flat-color logo background (common in exported logo files) rather than pasting a hard colored box. When a logo is present, the headline automatically reserves space for it and right-aligns instead of centering — don't fight this by re-centering manually, a centered long headline will run straight into the logo.
+
+**Dependencies**: the script needs `Pillow`, `numpy`, `uharfbuzz`, and `freetype-py` (`pip install -r requirements.txt` from the skill directory if missing). It bundles Cairo and Tajawal (this brand's fonts, per the style guide) under `assets/fonts/` — swap in another brand's font files there if reusing this skill elsewhere, and update the `HEADLINE_FONT`/`BODY_FONT` paths at the top of the script accordingly. Each text field (headline/subtext/cta/footer/bullets) can freely mix Arabic and Latin/digits (e.g. a footer with a phone number) — the script splits mixed fields into bidi runs automatically, so a phone number's digit groups stay in order instead of scrambling. Characters the bundled fonts can't render (emoji, most notably — these text fonts carry no emoji glyphs) are silently dropped rather than drawn as tofu boxes; don't rely on emoji rendering in composited text.
 
 ## Step 7 — Save and name outputs
 
-Save generated PNGs under `social/creatives/<date>-<topic-slug>/`, following the workspace's kebab-case-with-date convention, e.g.:
+Save composited PNGs under `social/creatives/<date>-<topic-slug>/`, following the workspace's kebab-case-with-date convention, e.g.:
 
-```
+```text
 social/creatives/2026-09-04-ramadan-promo/
   slide-1-hook.png
   slide-2-value.png
@@ -109,12 +124,12 @@ For single-image mode, a single file in the same pattern (e.g. `social/creatives
 
 ## Step 8 — Check before calling it done
 
-Before presenting the output, verify:
+Before presenting the output, look at each final composited image directly and verify:
 
-- **Arabic (or other on-slide) text actually rendered correctly and legibly** — image models frequently garble non-Latin script. Look at the generated image directly; if the text is wrong, regenerate that slide rather than shipping it broken.
-- **Text reads right-to-left** where the brand's language is RTL — check this visually, not just in the prompt.
+- **Text is legible, correctly joined, and reads right-to-left** where the brand's language is RTL. The HarfBuzz pipeline in Step 6 should guarantee this, but confirm visually rather than assuming — a font missing a glyph or a mis-set flag can still produce a blank/wrong result.
+- **The background photo has nothing that reads as text-shaped noise or a stray watermark** the image model might have added on its own
 - Nothing in the image violates a hard content rule from Step 2 (forbidden imagery, wrong language register, anything requiring sign-off like a live price)
-- The visual set feels consistent (see Step 5) if it's a carousel
+- The visual set feels consistent (Step 5) if it's a carousel
 - Run any project-specific pre-publish checklist referenced in the workspace's SOPs, if one exists, before marking customer-facing content ready to publish
 
 Flag anything that still needs human sign-off (an unconfirmed price, a style choice you're not fully sure about) rather than presenting it as finished.
