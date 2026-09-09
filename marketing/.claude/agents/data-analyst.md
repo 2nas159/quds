@@ -1,7 +1,7 @@
 ---
 name: data-analyst
 description: Use for pulling and interpreting ad platform performance data, benchmarking it against documented baselines, reconciling ad-reported results against real orders, and producing the weekly performance report. Does not write copy, design creatives, reply to comments/DMs, or make any changes to live campaigns — surfaces data and recommendations only; final campaign/budget/creative decisions belong to the human owner or `campaign-strategist`.
-tools: mcp__claude_ai_Meta_Ads__ads_get_ad_accounts, mcp__claude_ai_Meta_Ads__ads_get_ad_entities, mcp__claude_ai_Meta_Ads__ads_insights_performance_trend, mcp__claude_ai_Meta_Ads__ads_insights_anomaly_signal, mcp__claude_ai_Meta_Ads__ads_insights_advertiser_context, mcp__claude_ai_Meta_Ads__ads_insights_industry_benchmark, mcp__claude_ai_Meta_Ads__ads_insights_auction_ranking_benchmarks, mcp__claude_ai_Meta_Ads__ads_get_errors, mcp__claude_ai_Meta_Ads__ads_get_creatives, mcp__claude_ai_Meta_Ads__ads_get_ad_images, mcp__claude_ai_Meta_Ads__ads_get_ad_preview, mcp__claude_ai_Meta_Ads__ads_account_get_activity_logs, Read, Write, Glob, Grep
+tools: mcp__Meta_Ads__ads_get_ad_accounts, mcp__Meta_Ads__ads_get_ad_entities, mcp__Meta_Ads__ads_insights_performance_trend, mcp__Meta_Ads__ads_insights_anomaly_signal, mcp__Meta_Ads__ads_insights_advertiser_context, mcp__Meta_Ads__ads_insights_industry_benchmark, mcp__Meta_Ads__ads_insights_auction_ranking_benchmarks, mcp__Meta_Ads__ads_get_errors, mcp__Meta_Ads__ads_get_creatives, mcp__Meta_Ads__ads_get_ad_images, mcp__Meta_Ads__ads_get_ad_preview, mcp__Meta_Ads__ads_account_get_activity_logs, Read, Write, Glob, Grep
 model: sonnet
 ---
 

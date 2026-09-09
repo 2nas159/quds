@@ -45,13 +45,13 @@ Always load `_context/brand-voice-guide.md` and `_context/brand-content.md` — 
 1. **Never mention or imply market sourcing.** No public-facing content — posts, ads, replies, DMs — may state or hint that products are bought from a market. When asked about origin, redirect to in-house butchering, hygiene, and control. This is a hard rule with no exceptions.
 2. **Never publish a price without confirming it with Enes.** Prices in `_context/product-offerings.md` are a static reference baseline that goes stale — actual prices move daily/weekly. Flag any price-specific output as needing confirmation before it ships.
 3. **Masculine Arabic verb forms when writing as or about Enes.** He is male; feminine forms are a real error, not a stylistic one.
-4. **Every piece of content drives to WhatsApp: +90 534 570 30 37.** There is no website and no checkout. The CTA is always a WhatsApp message.
+4. **Every piece of content drives to an ordering channel: WhatsApp (+90 534 570 30 37) or the digital menu.** Customers can browse products and order (cash on delivery) either via WhatsApp or the digital menu — there is no separate online checkout/payment flow beyond COD. The CTA is a WhatsApp message or a link to the digital menu, per the content's channel and format.
 5. **Never show Enes's face** in creative direction or content concepts. Behind-the-scenes content uses hands, tools, product, and packaging only.
 6. **Never propose pausing a campaign or ad set to "reset" performance.** That destroys Meta's learning phase. Add fresh creative inside the existing ad set; pause only individual underperforming ads.
 
 ## Brand Fundamentals (quick reference — full detail in `_context/`)
 
-- **Model:** Dark store, no storefront. Order on WhatsApp → prepared fresh → delivered to the door → cash on delivery.
+- **Model:** Dark store, no physical storefront. Order via WhatsApp or the digital menu (browse products → order → cash on delivery) → prepared fresh → delivered to the door.
 - **Audience:** Arabic speakers in Başakşehir, Esenyurt, Arnavutköy, Bahçeşehir.
 - **The core challenge is the Trust Gap** — no physical store means every piece of content must actively supply trust signals: freshness cues, hygiene and in-house butchering, cash on delivery, real behind-the-scenes footage.
 - **Three messaging pillars,** present in some form across all content: توصيل سريع لباب بيتك · الدفع عند الاستلام · طازج لباب بيتك
@@ -60,7 +60,7 @@ Always load `_context/brand-voice-guide.md` and `_context/brand-content.md` — 
 
 ## Delegating to Sub-Agents
 
-Five sub-agents live in `.claude/agents/`. Each has a narrow, non-overlapping role and pulls brand facts from `_context/` at runtime. Route to one only when the task is genuinely agent-shaped; otherwise do it directly.
+Six sub-agents live in `.claude/agents/`. Each has a narrow, non-overlapping role and pulls brand facts from `_context/` at runtime. Route to one only when the task is genuinely agent-shaped; otherwise do it directly.
 
 ### When NOT to delegate
 
@@ -89,6 +89,14 @@ Route to a sub-agent when the task is **open-ended, spans multiple skills, or ne
 - Agents **cannot invoke each other.** They hand off through saved files: `market-researcher` → `research/`, `data-analyst` → `reports/`, `campaign-strategist` → briefs in `ads/`, consumed downstream. When a workflow needs several agents (e.g. research → report → campaign plan → copy → creative), dispatch them in sequence yourself and pass each one the path to the prior output.
 - A full campaign launch is multi-agent: `campaign-strategist` writes the brief, `content-creator` writes copy + carousel, `creative-designer` handles any Canva-specific asset, `campaign-strategist` puts it live.
 - If the right agent's expected input file doesn't exist yet, either run the upstream agent first or tell the user it's missing — don't have the downstream agent invent the data.
+
+## Skill Routing Overrides
+
+The packaged skill library is generic and brand-agnostic by design (see below), so a couple of overrides are needed for how it applies in this workspace:
+
+- **Rendered social carousels/graphics (especially anything with Arabic/RTL text) always go through the `social-creative-designer` skill**, invoked by `content-creator` — never the generic `social` or `image` skills, even though their descriptions also mention "carousel" and "social graphic." The generic skills don't guarantee correct RTL text rendering; `social-creative-designer` does (via HarfBuzz-based compositing). Use `social`/`image` only for non-visual social strategy (captions, posting cadence, content ideas) or non-brand image tasks.
+- **Generic skills that check for `.agents/product-marketing.md` / `.claude/product-marketing.md` context files will find nothing** — this workspace uses `_context/*.md` instead. If a generic skill stalls asking for context already documented in `_context/`, point it there rather than answering from scratch.
+- **The digital menu is a real, live product-browsing + COD-ordering surface** (not a full e-commerce checkout — no online payment). `site-architecture` and `programmatic-seo` are in scope for it (menu page structure, category/product pages, SEO). Skills assuming user accounts, subscriptions, in-app paywalls, or an app-store presence (there is none) are out of scope for this business and have been removed from this workspace's skill set.
 
 ## Writing Skills and Agents for This Project
 

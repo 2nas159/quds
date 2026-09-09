@@ -3,7 +3,7 @@
     "midjourney": {
       "url": "https://midjourney.mcp.acedata.cloud/mcp",
       "headers": {
-        "Authorization": "Bearer a55bac158fd847eda3be9b3e4403d8be"
+        "Authorization": "Bearer ${MIDJOURNEY_API_KEY}"
       }
     }
   }

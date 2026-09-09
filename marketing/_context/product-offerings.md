@@ -4,9 +4,9 @@
 
 **Prices in this file are a static reference baseline only — NOT the source of truth.**
 
-A live menu/pricing endpoint is planned but not yet built. Once available, that endpoint should be treated as the authoritative source for current prices, discounts, and stock availability. Any system or agent generating pricing content should fetch from the live endpoint when it exists, rather than relying on the values below.
+A digital menu now exists where customers can browse products and order (cash on delivery). **TODO: confirm the digital menu's URL/endpoint with Enes and add it here** — once documented, it should be treated as the authoritative source for current prices, discounts, and stock availability, and any system or agent generating pricing content should fetch from it rather than relying on the values below.
 
-Until the endpoint exists, use the values below as the last-known reference, but confirm with Enes before publishing any price-specific content, as prices change frequently (daily/weekly based on market conditions).
+Until the endpoint is documented here, use the values below as the last-known reference, but confirm with Enes before publishing any price-specific content, as prices change frequently (daily/weekly based on market conditions).
 
 ---
 
@@ -75,4 +75,5 @@ Per instruction, the water distribution line (Çopanpınar) is **not** included 
 ## Contact / Ordering
 
 - WhatsApp: **+90 534 570 30 37**
-- All orders and price confirmations happen via WhatsApp — no online storefront or checkout.
+- Digital menu: browse products and order, cash on delivery (URL TBD — see note above)
+- Orders happen via WhatsApp or the digital menu; price confirmations still go through Enes — no online payment/checkout.

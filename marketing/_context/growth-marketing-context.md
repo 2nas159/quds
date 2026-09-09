@@ -2,9 +2,9 @@
 
 ## Sales Funnel
 
-Meta Ads → WhatsApp conversation → Order (cash on delivery)
+Meta Ads → WhatsApp conversation or digital menu → Order (cash on delivery)
 
-Click-to-WhatsApp is the core conversion mechanism. The business does not use a website; all conversion happens through conversational commerce.
+Click-to-WhatsApp is the primary conversion mechanism, alongside the digital menu (product browsing + COD ordering, no online payment/checkout). There is no separate online storefront beyond these two.
 
 ## Key Accounts
 

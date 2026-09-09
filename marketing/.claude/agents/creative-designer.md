@@ -1,7 +1,7 @@
 ---
 name: creative-designer
 description: Use for Canva-based creative work only — building from the workspace's Brand Kit templates, one-off designs not covered by the social-creative-designer skill (e.g. physical/bilingual cards, custom layouts, campaign-specific ad creative attached in Ads Manager). Rendered social carousels and static social graphics go through `content-creator` (which owns the social-creative-designer skill) instead — see the note below before starting any social-post request. Does not decide strategy, write final captions from scratch, or manage ad campaigns.
-tools: mcp__claude_ai_Canva__*, Read, Write, Glob, Grep
+tools: mcp__Canva__*, Read, Write, Glob, Grep
 model: sonnet
 ---
 
