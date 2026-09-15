@@ -5,131 +5,195 @@ description: Designs and generates carousel-style social media graphics or singl
 
 # Social Creative Designer
 
-Turns a topic or piece of content into a set of on-brand social media visuals — carousel slides or a single static graphic — rendered as PNG files. This skill defines the *workflow*: it pulls all brand specifics (colors, fonts, voice, CTA, contact info, style direction) from the workspace's `_context/` and `_templates/` folders at runtime, so it stays reusable across brands as long as those folders exist.
+Turns approved copy into art-directed social visuals. The workflow is
+**content → design spec → image → composite → visual review → (bounded) revision**.
+All brand specifics come from the workspace's `_context/` and `_templates/` at
+runtime, so the skill stays reusable across brands.
 
 ## Why this shape
 
-Image models are good at composition and mood but unreliable at rendering non-Latin script correctly — this isn't specific to one provider, it's true of every mainstream image-generation model, because contextual letter-joining and right-to-left layout are underrepresented in training data compared to Latin text. Asking a model to bake Arabic (or any RTL/complex script) headline text directly into the image is a gamble that fails often enough to not be worth taking on a brand's actual content.
+Two failure modes drive the design:
 
-So this skill splits the work in two:
+1. **Image models cannot render Arabic (or any RTL/complex script) reliably.** So
+   the image model produces *photography only*, and `scripts/compose_slide.py`
+   draws the text with real HarfBuzz shaping.
+2. **An image model cannot be art-directed in prose.** "Leave negative space in
+   the upper third" and a hand-typed `--label-y 0.40` are two people guessing
+   independently — which is how labels ended up on top of products while the
+   reserved empty space went unused. So layout is decided *once*, in a Design
+   Spec, and both the image prompt and the compositor are derived from it.
 
-1. **AI image generation produces the photography only** — no text in the prompt at all. This is what image models are actually good at, and it's the one part of this workflow that needs whatever image-generation tool (MCP or otherwise) is currently available.
-2. **The bundled `scripts/compose_slide.py` draws the brand's text on top** of that photography — headline banner, CTA pill, footer strip, logo — using real HarfBuzz text shaping (the same engine browsers use), not Pillow's default text drawing or an AI model's guess. This guarantees correct letter-joining and right-to-left order every time.
+The image model owns photography, subject, camera, lighting, realism, and
+composing around reserved regions. It never owns typography, logo, CTA, badge,
+placement, or brand colour.
 
-The workflow also front-loads brand grounding (read the guides, look at real reference creatives) before writing a single prompt — skipping that is what produces off-brand output even when the text is fine.
+## The pipeline
 
-## Step 1 — Clarify the brief
+```
+brief + approved copy
+  → Design Spec  (scripts/design_spec.py)     ← art direction, as data
+  → image prompt (scripts/image_prompt.py)    ← derived, never hand-written
+  → photography  (whatever image tool is connected)
+  → composite    (scripts/compose_slide.py --design-spec)
+  → review       (scripts/review.py)          ← measures the actual PNG
+  → PASS, or one routed revision (max 2), or an honest below-threshold report
+```
 
-From the user's request, pin down:
+## Step 1 — Brief
 
-- **Topic/content**: what the slides are about (a product, an offer, an educational point, a behind-the-scenes story, etc.)
-- **Mode**: carousel (default) or single static image
-- **Slide count**: default **3** for a carousel unless the user specifies otherwise
-- **Aspect ratio**: default **4:5** (portrait). Also supports **1:1**, **3:4**, and landscape **1.91:1** if requested.
-- **Platform**: default **Instagram**. Also supports LinkedIn, Facebook, and others — platform mostly affects tone/format conventions (e.g. LinkedIn skews less emoji-heavy) more than the generation mechanics.
+Pin down: topic, mode (carousel / single), slide count (default 3), aspect
+(default 4:5), platform (default Instagram), and **paid vs organic**. Ask only
+if a genuine ambiguity would change the work; otherwise apply defaults.
 
-If any of these is genuinely ambiguous and would send the work in a materially different direction (e.g. is this a promo or an educational series?), ask. Otherwise apply the defaults and proceed — don't stall the whole workflow on minor preferences.
+The caller should supply: objective, paid/organic, audience, topic, approved
+copy, product, desired CTA, format, slide role, and any explicit creative
+direction. Missing creative direction is fine — that is what this skill decides.
+Missing *copy* is not: get it from the workspace's content agent first.
 
 ## Step 2 — Load brand context
 
-Read these before writing any prompts (paths are relative to the workspace root; if a path doesn't exist, tell the user rather than inventing brand details):
+Read `_context/brand-voice-guide.md`, `_context/brand-content.md`,
+`_context/brand-style-guide.md`, and `_templates/social-creatives/STYLE-GUIDE.md`
+(the measured visual spec — it is authoritative for layout). Add
+`_context/product-offerings.md` if a product or price is named. Check the
+project's `CLAUDE.md` for hard content rules; they override everything here.
 
-1. `_context/brand-voice-guide.md` and `_context/brand-content.md` — tone, language, non-negotiable content rules
-2. `_context/brand-style-guide.md` — full visual identity: colors, typography, logo/layout conventions
-3. `_templates/social-creatives/STYLE-GUIDE.md` — the quick-reference visual spec and the index of reference creatives
-4. If the topic names a product or price: `_context/product-offerings.md` (and flag any price as needing confirmation per the project's rules — never publish a specific price without sign-off)
-5. If it's campaign/performance-related: `_context/growth-marketing-context.md`
+The machine-readable half of the style guide is
+`_templates/social-creatives/brand-profile.json` — palette, fonts, logo assets,
+photography direction, and layout calibration measured off the reference
+creatives. Every script takes it via `--brand-profile`. **Never hardcode a brand
+value into this skill; add it to that file.**
 
-Also check the project's root instructions (CLAUDE.md, if present) for hard content rules — things like what must never be shown or implied, whose face can't appear, which language forms are required. These override anything below.
+## Step 3 — Design Spec
 
-## Step 3 — Pick a style direction
+Build one spec per frame. `design_spec.py` composes it from a creative-type
+preset → candidate art direction → brand calibration → your overrides.
 
-Unless the user has specified a style, open `_templates/social-creatives/STYLE-GUIDE.md` to see what visual directions exist, then look at the actual reference images it points to (use the Read tool on the image files — they're your directional inspiration, not a template to trace). Notice:
+- **Creative types**: `hero_offer`, `documentary_trust`, `value_list`, `cta_close`
+- **Candidates**: `product_hero` (A), `documentary` (B), `commercial` (C)
 
-- Layout pattern (where hook text, logo, CTA, price/badges sit)
-- Typography hierarchy (what's biggest/boldest, what's supporting text)
-- Color usage and mood (how saturated, how much white space, photography style)
+For an important creative — a paid ad, a carousel cover — build **all three
+candidates** and choose deliberately. They differ in subject scale, camera,
+crop and where the negative space opens, not in adjectives. Do not default to A.
 
-Pick the direction(s) that best fit the topic — a promo/discount topic might pull from a "discount flyer" style reference, an educational or trust-building topic might pull from a plainer product-forward style. **Adapt and recombine elements; don't replicate a reference exactly.** If the user names a specific style, use that one instead of choosing.
+Validate before spending an image call:
 
-## Step 4 — Plan the slide sequence
+```bash
+python scripts/design_spec.py path/to/spec.json
+```
 
-For a carousel, structure content across slides like this:
+It resolves every element to a box, auto-resolves collisions by hierarchy
+(`subject > headline > cta > badge > logo > footer` unless the creative type says
+otherwise), and reports safe-area, proportion and hierarchy errors. **Fix errors
+here** — a layout error caught now costs nothing; caught after generation it
+costs an image call.
 
-- **Slide 1 — the hook.** Bold, attention-stopping headline. Minimal text — a single strong line or short phrase, not a paragraph. Its only job is to stop the scroll and earn the swipe.
-- **Middle slides — value/education/insight.** Break the topic into digestible chunks, one idea per slide. This is where the substance lives.
-- **Final slide — CTA or takeaway.** Either a clear call to action (drive to the brand's ordering channel) or a memorable summary of the key point, per what the topic calls for.
+## Step 4 — Image prompt
 
-For single-image mode, compress this into one frame: apply the same "bold hook" direction from slide 1, adapted to carry a bit more supporting context since there's no follow-up slide.
+Derive it. Do not write one by hand:
 
-**Write the on-slide copy through a copy specialist, not inline.** If the workspace defines a content/copywriting agent (check `.claude/agents/`), delegate the actual headline/subtext/bullet/CTA writing to it rather than drafting it yourself — that's what such an agent exists for, and copy written without that step tends to read as generic on-brand phrasing rather than something that actually earns a click. Tell it explicitly whether this is a **paid ad** or an organic post: paid delivery needs a real scroll-stopping hook and a genuine reason to act now (a rules-compliant urgency/scarcity angle — e.g. limited daily prep quantity, occasion framing — never a fake countdown or a price/discount not confirmed with the brand owner), not just tone-matched sentences. If no such agent exists in the workspace, write the copy yourself but hold it to that same bar before moving on: could a stranger scrolling past actually feel the hook, or does it just describe the product?
+```bash
+python scripts/image_prompt.py spec.json --brand-profile <profile> [--json]
+```
 
-Decide which slides need which elements (a mid-value slide might skip the CTA pill; the final slide should have it prominently) once the copy is set.
+The reserved "keep this region visually quiet" clauses are computed from the
+resolved layout boxes, so the photograph is composed around the exact areas the
+compositor will draw into. Move the headline in the spec and the prompt follows.
 
-## Step 5 — Generate the background photography
+Generate with whatever image tool is connected this session (varies —
+check available MCP tools). Request the spec's exact dimensions. **If no image
+tool is available or every call fails, say so plainly** — never present a
+placeholder or a text description as the deliverable.
 
-Write an image-generation prompt per slide/frame that describes **photography only — no text, no logos, no UI elements, no badges**. That all gets added in Step 6. Include:
+For carousel consistency, reuse one scene/style across frames or pass an earlier
+frame as a reference image if the tool supports it.
 
-- **Subject/scene**: what's actually depicted (product shot, hands-on process, lifestyle moment — whatever fits the slide's content)
-- **Composition**: leave clear, uncluttered space where the headline banner, CTA pill, and footer will land (based on the style direction from Step 3) — e.g. "plenty of negative space in the upper third" if the headline banner goes there
-- **Color mood**: nudge the palette toward the brand's colors where natural (warm reds, natural lighting) without expecting exact hex-accurate output from a photo generator
-- **What to avoid**: faces (if the brand forbids showing a specific person), competing text, watermarks, logos
-
-Use whatever image-generation tool is currently available (check connected MCP tools — Nano Banana, Higgsfield, Gamma's `generate_image`, or others vary by session). Request the aspect ratio the tool supports; if it doesn't expose the exact ratio requested in Step 1, note the substitution to the user rather than silently picking something else, and pick the closest available ratio (e.g. 4:5 or 1:1 over an unsupported 1.91:1).
-
-**If no image-generation tool is available or every call fails, stop and tell the user explicitly** that AI-generated images could not be produced — don't fall back to describing images in text or producing placeholder output as if it were a deliverable.
-
-For visual consistency across a carousel, either reuse one generated background/scene style across all slides (varying subject slightly) or pass an earlier slide as a reference/conditioning image if the tool supports it, so the set reads as one design system rather than unrelated photos.
-
-## Step 6 — Composite the brand text
-
-Run `scripts/compose_slide.py` on each background image to add the headline, CTA, footer, and logo. It shapes text with HarfBuzz and rasterizes with FreeType — this is what makes Arabic (or any RTL script) come out correctly instead of the tofu-boxes/garbled-order failure you get from Pillow's default text drawing or an image model's guess.
+## Step 5 — Composite
 
 ```bash
 python scripts/compose_slide.py \
-  --background path/to/generated-photo.png \
-  --output social/creatives/<date>-<slug>/slide-1-hook.png \
-  --headline "اللحمة علينا والشوي عليك" \
-  --headline-color "#ffffff" \
-  --banner-color "#b90f2a" \
-  --cta "اطلب الآن" \
-  --cta-color "#25D366" \
-  --footer "توصيل سريع لباب بيتك · الدفع عند الاستلام" \
-  --logo path/to/logo.png
+  --design-spec spec.json --brand-profile <profile> \
+  --background bg.png --output slide-1.png --manifest slide-1.manifest.json
 ```
 
-Pull colors from the brand style guide (Step 2), not the defaults shown above — the defaults are just this brand's colors and won't be right for another. Run `python scripts/compose_slide.py --help` for the full option list; omit any flag for elements a given slide doesn't need (e.g. a mid-carousel value slide might skip `--cta`).
+The spec supplies copy, placement and palette; any explicit flag still overrides
+it, and the original CLI works unchanged (`--help` lists everything). The
+compositor measures each element's real geometry *after* text shaping, resolves
+collisions, then draws — so "does the badge sit on the CTA" is answered against
+what is actually rendered.
 
-**A flat rectangle banner reads as a template, not a design.** Before settling for the plain form above, check whether the brand's reference creatives (Step 3) use devices like a torn-paper banner edge, a checkmark bullet list, or a starburst urgency/callout badge — this script supports all three, and using them is usually the difference between "on-brand" and actually looking designed:
+**Always pass `--manifest`.** It records the boxes actually drawn; without it the
+review step's geometry, contrast and thumbnail checks are inert.
 
-- `--torn-banner` — jagged banner edge instead of a straight rectangle
-- `--bullets "line one" "line two" "line three"` (with `--bullets-color` / `--check-color`) — a right-aligned checkmark list under the banner, for value/trust slides
-- `--badge-text "..."` (with `--badge-color` / `--badge-text-color`) — a starburst badge, e.g. for a genuine urgency/scarcity line (never a fake countdown or an unconfirmed price)
-- `--logo path/to/logo.png` (with `--logo-badge-color`) — places the logo top-left inside a backing-color circle so it reads on any photo; the script auto-detects and strips a flat-color logo background (common in exported logo files) rather than pasting a hard colored box. When a logo is present, the headline automatically reserves space for it and right-aligns instead of centering — don't fight this by re-centering manually, a centered long headline will run straight into the logo.
+On Windows set `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` and use absolute paths.
+Dependencies: `pip install -r requirements.txt`.
 
-**Dependencies**: the script needs `Pillow`, `numpy`, `uharfbuzz`, and `freetype-py` (`pip install -r requirements.txt` from the skill directory if missing). It bundles Cairo and Tajawal (this brand's fonts, per the style guide) under `assets/fonts/` — swap in another brand's font files there if reusing this skill elsewhere, and update the `HEADLINE_FONT`/`BODY_FONT` paths at the top of the script accordingly. Each text field (headline/subtext/cta/footer/bullets) can freely mix Arabic and Latin/digits (e.g. a footer with a phone number) — the script splits mixed fields into bidi runs automatically, so a phone number's digit groups stay in order instead of scrambling. Characters the bundled fonts can't render (emoji, most notably — these text fonts carry no emoji glyphs) are silently dropped rather than drawn as tofu boxes; don't rely on emoji rendering in composited text.
+## Step 6 — Visual review
 
-## Step 7 — Save and name outputs
+```bash
+python scripts/review.py slide-1.png --manifest slide-1.manifest.json \
+  --background bg.png --spec spec.json --thumbnail slide-1.thumb.png [--findings f.json]
+```
 
-Save composited PNGs under `social/creatives/<date>-<topic-slug>/`, following the workspace's kebab-case-with-date convention, e.g.:
+Automated measurement catches what is measurable: padding/letterbox bands
+anywhere in the frame, graphics crowding out the photograph, invisible
+composited elements, collisions against real geometry, thumbnail legibility,
+and subject prominence.
+
+**You must also look at the image yourself** and at the thumbnail — glove
+colour, fake-looking product, restaurant-vs-working lighting, anatomy, brand
+feel and scroll-stopping power are not measurable. Pass your findings in via
+`--findings` as:
+
+```json
+[{"category": "photography", "severity": "high",
+  "issue": "lighting reads as warm restaurant photography, not working butchery",
+  "correction": "use cooler fluorescent lighting and a stainless working surface"}]
+```
+
+Categories route the fix: `photography`/`lighting`/`realism`/`subject_framing` →
+regenerate the image; `composition`/`hierarchy`/`product_prominence` → revise the
+spec and recomposite; `collision`/`typography`/`rendering`/`proportion`/
+`brand_consistency`/`legibility` → recomposite only. Never write "looks good" —
+every finding needs a concrete correction.
+
+`brand_consistency` is the ambiguous one: a wrong brand red is a compositor fix,
+but wrong-coloured gloves can only be fixed by regenerating. When the defect is
+**in the photograph**, add `"stage": "regenerate_image"` to the finding — without
+it the correction routes to the compositor and never reaches the regeneration
+that needed it.
+
+Scoring is out of 100 (composition 25, product prominence 20, brand consistency
+20, typography/layout 15, photography realism 10, CTA hierarchy 5, scroll-stopping
+5). ≥85 ships; 75–84 revises; <75 regenerates; and any single high-severity
+defect blocks the ship regardless of the total.
+
+## Step 7 — Revision (bounded)
+
+Apply the returned `corrections` at the stage `next_action` names — that is the
+whole point of routing: **do not regenerate the image for a layout problem.**
+For a photography fix, build the revision prompt with
+`image_prompt.py --revision "<correction>" ...` so the new attempt keeps what the
+last one got right.
+
+Maximum **2** revision cycles. If it still fails, keep the best candidate, say
+explicitly that it did not reach the threshold and why, and hand it over for a
+human call. Do not report a failing creative as finished.
+
+## Step 8 — Save
 
 ```text
-social/creatives/2026-09-04-ramadan-promo/
-  slide-1-hook.png
-  slide-2-value.png
-  slide-3-cta.png
+social/creatives/<date>-<topic-slug>/
+  slide-1-hook.png          spec/slide-1.json       (keep the specs —
+  slide-1.manifest.json     slide-1.review.json      they are the edit history)
 ```
 
-For single-image mode, a single file in the same pattern (e.g. `social/creatives/2026-09-04-friday-special/post.png`) is enough — skip the subfolder if there's only one file, unless the user is building a set over time.
+Single-image mode: one file in the same pattern, no subfolder needed. Flag
+anything needing human sign-off (an unconfirmed price, a claim, a style call
+you are unsure of) rather than presenting it as final.
 
-## Step 8 — Check before calling it done
+## Reusing this skill for another brand
 
-Before presenting the output, look at each final composited image directly and verify:
-
-- **Text is legible, correctly joined, and reads right-to-left** where the brand's language is RTL. The HarfBuzz pipeline in Step 6 should guarantee this, but confirm visually rather than assuming — a font missing a glyph or a mis-set flag can still produce a blank/wrong result.
-- **The background photo has nothing that reads as text-shaped noise or a stray watermark** the image model might have added on its own
-- Nothing in the image violates a hard content rule from Step 2 (forbidden imagery, wrong language register, anything requiring sign-off like a live price)
-- The visual set feels consistent (Step 5) if it's a carousel
-- Run any project-specific pre-publish checklist referenced in the workspace's SOPs, if one exists, before marking customer-facing content ready to publish
-
-Flag anything that still needs human sign-off (an unconfirmed price, a style choice you're not fully sure about) rather than presenting it as finished.
+Replace `_templates/social-creatives/brand-profile.json`, the font files under
+`assets/fonts/`, the logo assets it points at, and the reference creatives. The
+scripts contain no brand names, colours, phone numbers, products or account IDs.

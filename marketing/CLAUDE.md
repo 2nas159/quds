@@ -99,6 +99,15 @@ Skills and agents in this workspace must be **brand-agnostic and reusable**:
 - Give each agent a **clear, non-overlapping role.** Overlapping responsibilities produce conflicting output.
 - When brand-specific detail is needed, the skill instructs the agent to read the relevant `_context/` file — it does not restate the detail itself.
 
+## Environment
+
+`.mcp.json` reads its credentials from the environment — it must never contain a
+literal token. Set before starting a session that needs image generation:
+
+| Variable | Used by |
+|---|---|
+| `MIDJOURNEY_API_KEY` | the `midjourney` MCP server in `.mcp.json` |
+
 ## Working Conventions
 
 - Markdown for all deliverables.

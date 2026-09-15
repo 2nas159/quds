@@ -1,0 +1,105 @@
+{
+  "_comment": "Machine-readable companion to STYLE-GUIDE.md. The social-creative-designer skill reads this at runtime so it holds no brand specifics of its own. Numbers under layout_calibration are measured off social/_references/1.png, 2.png, 3.png — update them here (not in the skill) when the reference set changes.",
+
+  "brand": {
+    "name_native": "ملحمة القدس",
+    "script": "Arabic",
+    "text_direction": "rtl",
+    "language": "ar"
+  },
+
+  "colors": {
+    "primary": "#b90f2a",
+    "on_primary": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#1a1a1a",
+    "cta": "#25d366",
+    "cta_text": "#ffffff",
+    "headline_text": "#b90f2a",
+    "headline_surface": "#ffffff",
+    "footer_text": "#ffffff",
+    "badge": "#b90f2a",
+    "badge_text": "#ffffff",
+    "bullets": "#ffffff",
+    "check": "#b90f2a",
+    "pointer": "#ffffff"
+  },
+
+  "fonts": {
+    "headline": "assets/fonts/Cairo-Bold.ttf",
+    "body": "assets/fonts/Tajawal-Regular.ttf",
+    "body_bold": "assets/fonts/Tajawal-Bold.ttf"
+  },
+
+  "assets": {
+    "logo_light": "_templates/white logo.png",
+    "logo_dark": "_templates/black logo.png",
+    "logo_full": "_templates/original logo.png",
+    "references": [
+      "social/_references/1.png",
+      "social/_references/2.png",
+      "social/_references/3.png"
+    ],
+    "photography_mood_reference": "social/_references/background.png"
+  },
+
+  "photography": {
+    "genre": "authentic working-butchery documentary photograph",
+    "lighting": "bright, cool fluorescent/daylight interior light",
+    "environment": "real stainless-steel working surfaces and trays in an active preparation area",
+    "realism": "phone-camera realism, minor imperfection welcome, not glossy or over-polished",
+    "hands": "hands and forearms only, in black nitrile gloves",
+    "props": "rosemary, citrus or peppers used sparingly as freshness cues",
+    "color_mood": "deep natural red meat tones against cool steel grey",
+    "avoid": [
+      "any text, lettering, numerals or signage",
+      "logos, badges, stickers or watermarks",
+      "faces or any identifiable person",
+      "warm moody restaurant lighting",
+      "dark grill-at-night lighting",
+      "glossy luxury food-photography styling",
+      "decorative restaurant table settings",
+      "heavy vignettes or artificial bokeh",
+      "letterboxing, blank borders or empty white bands",
+      "gloves in any colour other than black"
+    ],
+    "negative_prompt": "text, lettering, typography, watermark, logo, signage, faces, people, restaurant plating, garnish styling, warm candlelight, heavy vignette, blurred background bokeh, white border, letterbox bars"
+  },
+
+  "layout_calibration": {
+    "_measured_from": "social/_references/1.png, 2.png, 3.png",
+    "margin": 0.045,
+    "elements": {
+      "headline": {
+        "style": "torn_label",
+        "max_width": 0.5,
+        "rotation": -3.0,
+        "glyph_height": 0.055,
+        "patch_height_range": [0.07, 0.12],
+        "patch_width_range": [0.25, 0.55],
+        "surface": "torn white paper, soft drop shadow",
+        "note": "sits beside the product, never a full-width strip across the top edge"
+      },
+      "logo": { "area": "upper_right", "width": 0.13, "backing": "none" },
+      "cta": { "area": "lower_center", "width": 0.43, "height": 0.06 },
+      "badge": { "area": "lower_left", "width": 0.21 },
+      "footer": { "area": "lower_left", "width": 0.6, "text_height": 0.019, "backing": "none" },
+      "bullets": { "area": "mid_right", "max_width": 0.62 }
+    },
+    "photo_coverage": 1.0,
+    "signature_devices": [
+      "torn white paper label carrying bold red Arabic text, tilted ~-3 degrees",
+      "short curved white hand-drawn arrow from the label to the cut it names",
+      "red starburst badge, bottom-left",
+      "green WhatsApp CTA pill, bottom-centre, kept prominent",
+      "small corner logo lockup with no backing disc",
+      "contact line in small white text straight on the photo, no bar"
+    ]
+  },
+
+  "defaults": {
+    "cta_text": "اطلب الآن",
+    "contact_line": "+90 534 570 30 37",
+    "aspect": "4:5"
+  }
+}

@@ -19,11 +19,11 @@ Usage:
         --headline "ريش خروف" \
         --pointer 0.30 0.20 0.52 0.42 \
         --cta "اطلب الآن" \
-        --footer "اطلب على الواتساب · +90 534 570 30 37" \
+        --footer "<contact line>" \
         --logo path/to/white-logo.png --logo-position tr
 
-The house default is the brand's compact torn WHITE paper label with RED
-Cairo Bold text, sized to hug the hook and dropped beside the product with a
+The house default is a compact torn WHITE paper label with RED
+bold text, sized to hug the hook and dropped beside the product with a
 soft shadow and (optionally) a curved arrow — calibrated to the reference
 creatives in social/_references/. The photo runs full-bleed: there is no
 top strip and no footer bar by default. `--banner-width full` brings back
@@ -39,19 +39,55 @@ their own left-to-right order and reading order instead of getting
 shattered at every space (what a naive single-direction shape does).
 """
 import argparse
+import json
 import math
 import random
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import design_spec
 
 import numpy as np
 import uharfbuzz as hb
 import freetype
 from PIL import Image, ImageDraw, ImageFilter
 
-FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"
+SKILL_DIR = Path(__file__).parent.parent
+FONT_DIR = SKILL_DIR / "assets" / "fonts"
+# Fallbacks only. A --brand-profile with a "fonts" block replaces these at
+# runtime (see apply_brand_fonts), so another brand swaps its faces in by
+# editing its profile rather than this file.
 HEADLINE_FONT = FONT_DIR / "Cairo-Bold.ttf"
 BODY_FONT = FONT_DIR / "Tajawal-Regular.ttf"
 BODY_FONT_BOLD = FONT_DIR / "Tajawal-Bold.ttf"
+
+
+def apply_brand_fonts(brand, profile_path=None):
+    """Point the module's font handles at the brand profile's faces.
+
+    Paths in the profile resolve relative to the skill directory first (that is
+    where the bundled faces live), then relative to the profile itself, so a
+    brand can keep its fonts beside its profile instead."""
+    global HEADLINE_FONT, BODY_FONT, BODY_FONT_BOLD
+    fonts = (brand or {}).get("fonts") or {}
+    roots = [SKILL_DIR]
+    if profile_path:
+        roots.append(Path(profile_path).parent)
+    for key, name in (("headline", "HEADLINE_FONT"), ("body", "BODY_FONT"),
+                      ("body_bold", "BODY_FONT_BOLD")):
+        rel = fonts.get(key)
+        if not rel:
+            continue
+        for root in roots:
+            candidate = Path(rel) if Path(rel).is_absolute() else (root / rel)
+            if candidate.exists():
+                globals()[name] = candidate
+                break
+        else:
+            raise SystemExit(
+                f"brand profile font {key}={rel!r} not found under "
+                + " or ".join(str(r) for r in roots))
 
 
 def hex_to_rgb(hex_color):
@@ -452,14 +488,200 @@ def draw_curved_arrow(canvas, p0, p1, color, stroke, bow=0.28):
                fill=tuple(color), width=stroke, joint="curve")
 
 
-def main():
+# ---------------------------------------------------------------------------
+# Design Spec integration
+# ---------------------------------------------------------------------------
+# The compositor used to be a pile of independent CLI numbers: --label-y here,
+# a hardcoded badge centre there, a CTA pinned to the bottom. Nothing knew
+# where anything else was, so elements collided and the layout could not agree
+# with the image prompt. It now optionally takes the same Design Spec the image
+# prompt was built from, measures every element's real geometry after text
+# shaping, resolves collisions by hierarchy, and can emit a manifest of what it
+# actually drew for the quality gate to check.
+#
+# The original CLI is untouched: every flag still works, and without
+# --design-spec the default collision policy is "warn", so existing commands
+# produce byte-identical output.
+
+# spec path -> argparse dest. Only applied for options the caller did not pass
+# explicitly, so an explicit flag always beats the spec.
+SPEC_TO_ARG = [
+    ("elements.headline.text", "headline"),
+    ("elements.headline.x", "label_x"),
+    ("elements.headline.y", "label_y"),
+    ("elements.headline.rotation", "label_tilt"),
+    ("elements.headline.max_width", "headline_max_width"),
+    ("elements.subtext.text", "subtext"),
+    ("elements.cta.text", "cta"),
+    ("elements.cta.x", "cta_x"),
+    ("elements.cta.y", "cta_y"),
+    ("elements.cta.width", "cta_width"),
+    ("elements.badge.text", "badge_text"),
+    ("elements.badge.x", "badge_x"),
+    ("elements.badge.y", "badge_y"),
+    ("elements.badge.width", "badge_width"),
+    ("elements.footer.text", "footer"),
+    ("elements.footer.x", "footer_x"),
+    ("elements.footer.y", "footer_y"),
+    ("elements.logo.path", "logo"),
+    ("elements.logo.width", "logo_scale"),
+    ("elements.logo.area", "logo_position"),
+    ("elements.bullets.items", "bullets"),
+    ("elements.bullets.x", "bullets_x"),
+    ("elements.bullets.y", "bullets_y"),
+    ("elements.watermark.path", "watermark"),
+    ("elements.pointer.points", "pointer"),
+    ("margin", "margin_scale"),
+]
+
+# brand-profile colour key -> argparse dest. Keeps the palette out of this file.
+BRAND_COLOR_TO_ARG = [
+    ("headline_text", "headline_color"),
+    ("headline_surface", "banner_color"),
+    ("cta", "cta_color"),
+    ("cta_text", "cta_text_color"),
+    ("footer_text", "footer_color"),
+    ("badge", "badge_color"),
+    ("badge_text", "badge_text_color"),
+    ("bullets", "bullets_color"),
+    ("check", "check_color"),
+]
+
+
+def _dig(obj, dotted):
+    cur = obj
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def _explicit_dests(parser, argv):
+    """Which argparse dests the caller actually typed. Needed so a Design Spec
+    can supply defaults without silently overriding an explicit flag."""
+    lookup = {}
+    for action in parser._actions:
+        for opt in action.option_strings:
+            lookup[opt] = action.dest
+    found = set()
+    for token in argv:
+        name = token.split("=", 1)[0]
+        if name in lookup:
+            found.add(lookup[name])
+    return found
+
+
+def apply_design_spec(args, spec, brand, explicit):
+    """Fill unset arguments from the Design Spec and brand profile."""
+    if brand:
+        for key, dest in BRAND_COLOR_TO_ARG:
+            value = (brand.get("colors") or {}).get(key)
+            if value and dest not in explicit:
+                setattr(args, dest, value)
+
+    if not spec:
+        return args
+
+    for dotted, dest in SPEC_TO_ARG:
+        if dest in explicit:
+            continue
+        value = _dig(spec, dotted)
+        if value is None:
+            continue
+        if dest == "logo_position":
+            value = design_spec.area_to_corner(value)
+        setattr(args, dest, value)
+
+    # Unit reconciliation. The Design Spec always describes an element by its
+    # TOP-LEFT corner (that is what a Box is). Two CLI flags predate the spec
+    # and take a CENTRE instead, because that reads naturally for a round
+    # starburst and a centred pill. Converting here keeps one rule — specs are
+    # top-left — instead of leaving a silent off-by-half-a-badge.
+    badge_w = _dig(spec, "elements.badge.width")
+    if "badge_x" not in explicit and _dig(spec, "elements.badge.x") is not None:
+        width = badge_w if badge_w is not None else args.badge_scale * 2
+        args.badge_x = float(_dig(spec, "elements.badge.x")) + width / 2
+    if "badge_y" not in explicit and _dig(spec, "elements.badge.y") is not None:
+        canvas = spec.get("canvas") or {}
+        aspect = (canvas.get("width", 1) / canvas.get("height", 1)) or 1.0
+        height = (badge_w if badge_w is not None else args.badge_scale * 2) * aspect
+        args.badge_y = float(_dig(spec, "elements.badge.y")) + height / 2
+    if "cta_x" not in explicit and _dig(spec, "elements.cta.x") is not None:
+        width = _dig(spec, "elements.cta.width") or 0.0
+        args.cta_x = float(_dig(spec, "elements.cta.x")) + width / 2
+
+    # A disabled element in the spec means "do not draw it", even if a brand
+    # default or a leftover flag would otherwise supply text.
+    for name, dest in (("headline", "headline"), ("cta", "cta"), ("badge", "badge_text"),
+                       ("footer", "footer"), ("bullets", "bullets"), ("logo", "logo"),
+                       ("subtext", "subtext"), ("watermark", "watermark")):
+        cfg = _dig(spec, f"elements.{name}")
+        if isinstance(cfg, dict) and cfg.get("enabled") is False and dest not in explicit:
+            setattr(args, dest, None)
+
+    return args
+
+
+class Placement:
+    """One measured element: the RGBA it will draw, where it wants to sit, and
+    how it is composited. Measuring everything before drawing anything is what
+    makes collision resolution possible at all."""
+
+    def __init__(self, name, image, x, y, shadow=None):
+        self.name = name
+        self.image = image
+        self.x = int(x)
+        self.y = int(y)
+        self.shadow = shadow or {}
+
+    def box(self, w, h):
+        return design_spec.Box(self.x / w, self.y / h,
+                               self.image.width / w, self.image.height / h)
+
+    def draw(self, canvas):
+        if self.shadow:
+            canvas.alpha_composite(
+                soft_shadow(self.image, self.shadow.get("blur", 4), self.shadow.get("alpha", 120)),
+                (self.x + self.shadow.get("dx", 2), self.y + self.shadow.get("dy", 3)),
+            )
+        canvas.alpha_composite(self.image, (self.x, self.y))
+
+
+def _layer_with(size, painter):
+    """Render something that only knows how to draw onto a full canvas into its
+    own transparent layer, then trim to what it actually covered — gives the
+    collision resolver a real bounding box for bullets and starbursts."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    painter(layer, ImageDraw.Draw(layer))
+    bbox = layer.getbbox()
+    if bbox is None:
+        return None, (0, 0)
+    return layer.crop(bbox), (bbox[0], bbox[1])
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--background", required=True, help="Path to the AI-generated background photo (no text)")
-    p.add_argument("--output", required=True, help="Path to write the final composed PNG")
+    p.add_argument("--background", help="Path to the AI-generated background photo (no text)")
+    p.add_argument("--output", help="Path to write the final composed PNG")
+    p.add_argument("--design-spec", help="Design Spec JSON: supplies layout/copy for any flag not "
+                                        "passed explicitly, and enables collision resolution")
+    p.add_argument("--brand-profile", help="Brand profile JSON: supplies the palette for any colour "
+                                           "flag not passed explicitly")
+    p.add_argument("--manifest", help="Write a JSON manifest of the boxes actually drawn (for review.py)")
+    p.add_argument("--collision-policy", choices=["off", "warn", "adjust"], default=None,
+                   help="What to do when measured elements overlap. Default: 'adjust' with a "
+                        "--design-spec, 'warn' without one (preserves legacy CLI output).")
+    p.add_argument("--validate-only", action="store_true",
+                   help="Resolve and validate the layout, print the report, render nothing")
     p.add_argument("--headline", help="Main hook / product-name text (Arabic)")
     # House default is the brand's torn WHITE paper label carrying RED text
     # (STYLE-GUIDE ss3), sized to hug the text — not a red bar with white text
     # spanning the whole top edge.
+    # The colour defaults below are fallbacks for calls that pass no
+    # --brand-profile. They are one brand's palette; a profile overrides every
+    # one of them, which is how this skill stays reusable.
     p.add_argument("--headline-color", default="#b90f2a", help="Headline text color")
     p.add_argument("--banner-color", default="#ffffff", help="Label paper color, or 'none' for text straight on the photo")
     p.add_argument("--banner-width", choices=["hug", "full"], default="hug",
@@ -469,17 +691,24 @@ def main():
     p.add_argument("--label-x", type=float, default=0.045, help="hug label: left inset as a fraction of width")
     p.add_argument("--label-y", type=float, default=0.40, help="hug label: nominal top as a fraction of height")
     p.add_argument("--label-tilt", type=float, default=-3.0, help="hug label: rotation in degrees (0 for none)")
+    p.add_argument("--headline-max-width", type=float, default=0.72,
+                   help="Widest the label text box may get, as a fraction of canvas width")
     p.add_argument("--headline-scale", type=float, default=0.052, help="Headline start size as a fraction of canvas height")
     p.add_argument("--headline-min-scale", type=float, default=0.040, help="Smallest headline size as a fraction of canvas height")
     p.add_argument("--subtext", help="Optional smaller supporting line under the headline")
     p.add_argument("--cta", help="CTA pill text, e.g. اطلب الآن")
-    p.add_argument("--cta-color", default="#25D366", help="CTA pill background color (brand WhatsApp green by default)")
+    p.add_argument("--cta-color", default="#25D366", help="CTA pill background color (fallback: WhatsApp green)")
     p.add_argument("--cta-text-color", default="#ffffff")
+    p.add_argument("--cta-x", type=float, default=None, help="CTA pill centre x as a fraction of width (default: centred)")
+    p.add_argument("--cta-y", type=float, default=None, help="CTA pill top as a fraction of height (default: above the footer)")
+    p.add_argument("--cta-width", type=float, default=None, help="Target pill width as a fraction of canvas width")
     p.add_argument("--footer", help="Small contact line, e.g. WhatsApp number + delivery areas")
     p.add_argument("--footer-color", default="#ffffff")
     p.add_argument("--footer-bg", default="none", help="Footer backing color, or 'none' (default) for text straight on the photo")
     p.add_argument("--footer-align", choices=["left", "center"], default="left")
     p.add_argument("--footer-scale", type=float, default=0.019, help="Footer text size as a fraction of canvas height")
+    p.add_argument("--footer-x", type=float, default=None, help="Footer left edge as a fraction of width")
+    p.add_argument("--footer-y", type=float, default=None, help="Footer top as a fraction of height")
     p.add_argument("--logo", help="Optional logo image")
     p.add_argument("--logo-position", choices=["tl", "tr", "bl", "br"], default="tr",
                    help="Which corner the logo sits in (references use top-right and bottom-right)")
@@ -489,20 +718,55 @@ def main():
     p.add_argument("--bullets", nargs="+", help="Checkmark bullet list drawn below the label (short phrases, not full sentences)")
     p.add_argument("--bullets-color", default="#ffffff", help="Bullet text color — white by default now that bullets sit on the photo, not a panel")
     p.add_argument("--check-color", default="#b90f2a")
+    p.add_argument("--bullets-x", type=float, default=None, help="Bullets right edge as a fraction of width")
+    p.add_argument("--bullets-y", type=float, default=None, help="Bullets top as a fraction of height")
     p.add_argument("--badge-text", help="Short text for a starburst badge (e.g. an urgency/scarcity line) — 1-3 short words, placed bottom-left")
     p.add_argument("--badge-color", default="#b90f2a")
     p.add_argument("--badge-text-color", default="#ffffff")
     p.add_argument("--badge-scale", type=float, default=0.11, help="Starburst radius as a fraction of canvas width")
+    p.add_argument("--badge-width", type=float, default=None, help="Starburst diameter as a fraction of canvas width (overrides --badge-scale)")
+    p.add_argument("--badge-x", type=float, default=0.16, help="Starburst centre x as a fraction of width")
+    p.add_argument("--badge-y", type=float, default=0.82, help="Starburst centre y as a fraction of height")
     p.add_argument("--pointer", nargs=4, type=float, metavar=("X0", "Y0", "X1", "Y1"),
                    help="Draw a curved arrow between two fractional (0-1) points, label -> product detail")
     p.add_argument("--watermark", help="Optional logo image to drop in faint behind the text, centre of frame")
     p.add_argument("--margin-scale", type=float, default=0.045, help="Outer margin as a fraction of canvas width")
-    args = p.parse_args()
+    args = p.parse_args(argv)
+
+    explicit = _explicit_dests(p, argv)
+
+    spec = design_spec.load_spec(args.design_spec) if args.design_spec else None
+    brand = design_spec.load_brand_profile(args.brand_profile) if args.brand_profile else None
+    if brand:
+        apply_brand_fonts(brand, args.brand_profile)
+    args = apply_design_spec(args, spec, brand, explicit)
+
+    policy = args.collision_policy or ("adjust" if spec else "warn")
+
+    if args.validate_only:
+        if not spec:
+            print("--validate-only needs a --design-spec to validate")
+            return 2
+        report = design_spec.layout_report(spec)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 1 if report["errors"] else 0
+
+    if not args.background or not args.output:
+        p.error("--background and --output are required unless --validate-only is used")
 
     base = Image.open(args.background).convert("RGBA")
     w, h = base.size
     canvas = Image.new("RGBA", (w, h))
     canvas.alpha_composite(base)
+
+    margin = int(w * args.margin_scale)
+    hl_start = max(24, int(h * args.headline_scale))
+    hl_min = max(18, int(h * args.headline_min_scale))
+    red = hex_to_rgb(args.headline_color)
+
+    placements = []          # measured, movable elements
+    direct_draws = []        # things drawn straight onto the canvas (bands, watermark)
+    boxes = {}               # name -> normalized Box, for the manifest
 
     # Faint centre watermark sits behind everything else (STYLE-GUIDE Format A).
     if args.watermark:
@@ -511,15 +775,11 @@ def main():
         tw = int(w * 0.5)
         wm.thumbnail((tw, tw))
         wm.putalpha(wm.split()[3].point(lambda v: int(v * 0.22)))
-        canvas.alpha_composite(wm, ((w - wm.width) // 2, (h - wm.height) // 2))
+        direct_draws.append(("watermark", wm, ((w - wm.width) // 2, (h - wm.height) // 2)))
 
-    draw = ImageDraw.Draw(canvas)
-    margin = int(w * args.margin_scale)
-    hl_start = max(24, int(h * args.headline_scale))
-    hl_min = max(18, int(h * args.headline_min_scale))
-    red = hex_to_rgb(args.headline_color)
     label_bottom = int(h * 0.14)  # where bullets start if there is no headline
 
+    # ---- headline ---------------------------------------------------------
     if args.headline and args.banner_width == "full":
         # ---- legacy full-width strip (kept for callers that ask for it) ----
         banner_h = int(h * 0.20)
@@ -529,22 +789,26 @@ def main():
             band = (0, h - banner_h, w, h)
         else:
             band = (0, (h - banner_h) // 2, w, (h + banner_h) // 2)
+        strip = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        sdraw = ImageDraw.Draw(strip)
         if args.banner_color.lower() != "none":
             if args.torn_banner:
                 edge = "bottom" if args.banner_position == "top" else "top"
-                draw_torn_band(draw, w, band[1], band[3], hex_to_rgb(args.banner_color), edge=edge)
+                draw_torn_band(sdraw, w, band[1], band[3], hex_to_rgb(args.banner_color), edge=edge)
             else:
-                draw.rectangle(band, fill=hex_to_rgb(args.banner_color))
+                sdraw.rectangle(band, fill=hex_to_rgb(args.banner_color))
         lines, line_h = fit_and_wrap(args.headline, HEADLINE_FONT, w - 2 * margin,
                                      banner_h - 2 * margin, start_size=hl_start, min_size=hl_min)
         y = band[1] + (banner_h - line_h * len(lines)) / 2
         for shaped in lines:
-            paste_centered(canvas, shaped, red, w / 2, y)
+            paste_centered(strip, shaped, red, w / 2, y)
             y += line_h
         if args.subtext:
             sub = shape_line(args.subtext, BODY_FONT, max(24, int(banner_h * 0.12)))
-            paste_centered(canvas, sub, red, w / 2, y + 6)
+            paste_centered(strip, sub, red, w / 2, y + 6)
             y += sub.height
+        direct_draws.append(("headline", strip, (0, 0)))
+        boxes["headline"] = design_spec.Box(0.0, band[1] / h, 1.0, (band[3] - band[1]) / h)
         label_bottom = band[3] if args.banner_position != "bottom" else band[1]
 
     elif args.headline:
@@ -554,7 +818,7 @@ def main():
         # box height so a longer hook shrinks its font instead of stacking
         # three full-size lines and ballooning the patch.
         pad_x, pad_y = int(w * 0.035), int(h * 0.014)
-        max_text_w = int(w * 0.72) - 2 * pad_x
+        max_text_w = int(w * args.headline_max_width) - 2 * pad_x
         lines, line_h = fit_and_wrap(args.headline, HEADLINE_FONT, max_text_w, h * 0.16,
                                      start_size=hl_start, min_size=hl_min, balance=True)
         text_w = max(s.width for s in lines)
@@ -562,12 +826,14 @@ def main():
         lx, ly = int(w * args.label_x), int(h * args.label_y)
 
         if args.banner_color.lower() == "none":
-            ty = ly
+            block = Image.new("RGBA", (text_w + 8, text_h + 8), (0, 0, 0, 0))
+            ty = 0
             for shaped in lines:
                 g = shaped.render(red)
-                paste_with_shadow(canvas, g, (lx, ty), blur=int(h * 0.005), offset=(3, 4), alpha=130)
+                block.alpha_composite(g, (0, int(ty)))
                 ty += line_h
-            label_bottom = int(ty)
+            placements.append(Placement("headline", block, lx, ly,
+                                        {"blur": int(h * 0.005), "dx": 3, "dy": 4, "alpha": 130}))
         else:
             patch_w, patch_h = text_w + 2 * pad_x, text_h + 2 * pad_y
             paper, hd = make_torn_patch(patch_w, patch_h, hex_to_rgb(args.banner_color) + (255,))
@@ -576,36 +842,39 @@ def main():
                 paper.alpha_composite(g, (int((patch_w - g.width) / 2), int(hd + pad_y + i * line_h)))
             if args.label_tilt:
                 paper = paper.rotate(args.label_tilt, expand=True, resample=Image.BICUBIC)
-            paste_with_shadow(canvas, paper, (lx, ly - hd), blur=int(h * 0.006), offset=(4, 7), alpha=110)
-            label_bottom = ly - hd + paper.height
+            placements.append(Placement("headline", paper, lx, ly - hd,
+                                        {"blur": int(h * 0.006), "dx": 4, "dy": 7, "alpha": 110}))
 
-        if args.subtext:
-            # The subtext sits on the photo just under the paper, not on it —
-            # so it is white with a shadow, never the red used on the paper.
-            sub = shape_line(args.subtext, BODY_FONT_BOLD, max(20, int(h * 0.024)))
-            sub_img = sub.render((255, 255, 255))
-            paste_with_shadow(canvas, sub_img, (lx + int(w * 0.008), label_bottom + int(h * 0.006)),
-                              blur=4, offset=(2, 3), alpha=150)
-            label_bottom = label_bottom + int(h * 0.006) + sub_img.height
+    # ---- subtext ----------------------------------------------------------
+    subtext_place = None
+    if args.subtext and args.banner_width != "full":
+        # The subtext sits on the photo just under the paper, not on it —
+        # so it is white with a shadow, never the red used on the paper.
+        sub = shape_line(args.subtext, BODY_FONT_BOLD, max(20, int(h * 0.024)))
+        sub_img = sub.render((255, 255, 255))
+        subtext_place = Placement("subtext", sub_img, 0, 0, {"blur": 4, "dx": 2, "dy": 3, "alpha": 150})
+        placements.append(subtext_place)
 
+    # ---- bullets ----------------------------------------------------------
+    bullets_place = None
     if args.bullets:
-        # Render onto a transparent layer, shadow the whole layer, then
-        # composite — so white bullet text holds up on a bright photo without
-        # a backing panel.
         bullet_size = max(24, int(w * 0.030))
-        layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        draw_bullets(layer, ImageDraw.Draw(layer), args.bullets, BODY_FONT_BOLD, bullet_size,
-                     hex_to_rgb(args.bullets_color), hex_to_rgb(args.check_color),
-                     right_x=w - margin, left_limit=margin,
-                     top_y=int(label_bottom) + int(h * 0.03))
-        canvas.alpha_composite(soft_shadow(layer, 5, 130))
-        canvas.alpha_composite(layer)
+        right_x = int(w * args.bullets_x) if args.bullets_x is not None else w - margin
+        top_y = int(h * args.bullets_y) if args.bullets_y is not None else None
 
-    if args.pointer:
-        x0, y0, x1, y1 = args.pointer
-        draw_curved_arrow(canvas, (x0 * w, y0 * h), (x1 * w, y1 * h),
-                          (255, 255, 255), max(4, int(w * 0.006)))
+        def paint_bullets(layer, d, _top=top_y, _right=right_x, _size=bullet_size):
+            draw_bullets(layer, d, args.bullets, BODY_FONT_BOLD, _size,
+                         hex_to_rgb(args.bullets_color), hex_to_rgb(args.check_color),
+                         right_x=_right, left_limit=margin,
+                         top_y=_top if _top is not None else int(h * 0.45))
 
+        bullet_img, bullet_origin = _layer_with((w, h), paint_bullets)
+        if bullet_img is not None:
+            bullets_place = Placement("bullets", bullet_img, bullet_origin[0], bullet_origin[1],
+                                      {"blur": 5, "dx": 0, "dy": 0, "alpha": 130})
+            placements.append(bullets_place)
+
+    # ---- logo -------------------------------------------------------------
     if args.logo:
         logo = Image.open(args.logo).convert("RGBA")
         logo = chroma_key_flat_background(logo)
@@ -615,29 +884,38 @@ def main():
         ly = margin if args.logo_position in ("tl", "tr") else h - margin - logo.height
         if args.logo_badge_color.lower() != "none":
             badge_r = int(max(logo.width, logo.height) * 0.72)
+            disc = Image.new("RGBA", (badge_r * 2, badge_r * 2), (0, 0, 0, 0))
+            ImageDraw.Draw(disc).ellipse((0, 0, badge_r * 2, badge_r * 2),
+                                         fill=hex_to_rgb(args.logo_badge_color) + (255,))
+            disc.alpha_composite(logo, (badge_r - logo.width // 2, badge_r - logo.height // 2))
             cx, cy = lx + logo.width // 2, ly + logo.height // 2
-            badge = Image.new("RGBA", (badge_r * 2, badge_r * 2), (0, 0, 0, 0))
-            ImageDraw.Draw(badge).ellipse((0, 0, badge_r * 2, badge_r * 2), fill=hex_to_rgb(args.logo_badge_color) + (255,))
-            canvas.alpha_composite(badge, (cx - badge_r, cy - badge_r))
-            canvas.alpha_composite(logo, (cx - logo.width // 2, cy - logo.height // 2))
+            placements.append(Placement("logo", disc, cx - badge_r, cy - badge_r))
         else:
             # A whisper of shadow so the mark reads whether it lands on a light
             # or dark patch of the photo.
-            canvas.alpha_composite(soft_shadow(logo, 6, 85), (lx + 2, ly + 3))
-            canvas.alpha_composite(logo, (lx, ly))
+            placements.append(Placement("logo", logo, lx, ly, {"blur": 6, "dx": 2, "dy": 3, "alpha": 85}))
 
+    # ---- starburst badge --------------------------------------------------
     if args.badge_text:
-        badge_r = int(w * args.badge_scale)
-        cx, cy = int(w * 0.16), int(h * 0.82)
-        draw_starburst(ImageDraw.Draw(canvas), (cx, cy), badge_r, int(badge_r * 0.62), 10, hex_to_rgb(args.badge_color))
-        blines, blh = fit_and_wrap(args.badge_text, BODY_FONT_BOLD, int(badge_r * 1.3), int(badge_r * 1.2),
-                                   start_size=int(badge_r * 0.34), min_size=16)
-        by = cy - blh * len(blines) / 2
+        badge_r = int(w * args.badge_width / 2) if args.badge_width else int(w * args.badge_scale)
+        size = badge_r * 2 + 4
+        badge_img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        bdraw = ImageDraw.Draw(badge_img)
+        draw_starburst(bdraw, (size // 2, size // 2), badge_r, int(badge_r * 0.62), 10,
+                       hex_to_rgb(args.badge_color))
+        blines, blh = fit_and_wrap(args.badge_text, BODY_FONT_BOLD, int(badge_r * 1.3),
+                                   int(badge_r * 1.2), start_size=int(badge_r * 0.34), min_size=16)
+        by = size // 2 - blh * len(blines) / 2
         for line in blines:
-            paste_centered(canvas, line, hex_to_rgb(args.badge_text_color), cx, by)
+            paste_centered(badge_img, line, hex_to_rgb(args.badge_text_color), size // 2, by)
             by += blh
+        placements.append(Placement("badge", badge_img,
+                                    int(w * args.badge_x) - size // 2,
+                                    int(h * args.badge_y) - size // 2))
 
+    # ---- footer -----------------------------------------------------------
     foot_block_h = 0
+    footer_strip = None
     if args.footer:
         foot_size = max(16, int(h * args.footer_scale))
         foot = shape_line(args.footer, BODY_FONT, foot_size)
@@ -645,28 +923,130 @@ def main():
         foot_block_h = foot_img.height + margin
         if args.footer_bg.lower() != "none":
             strip_h = int(foot_img.height + 2 * int(h * 0.02))
-            ImageDraw.Draw(canvas).rectangle((0, h - strip_h, w, h), fill=hex_to_rgb(args.footer_bg))
-            canvas.alpha_composite(foot_img, (int((w - foot_img.width) / 2),
-                                              int(h - strip_h + (strip_h - foot_img.height) / 2)))
+            footer_strip = Image.new("RGBA", (w, strip_h), hex_to_rgb(args.footer_bg) + (255,))
+            footer_strip.alpha_composite(foot_img, (int((w - foot_img.width) / 2),
+                                                    int((strip_h - foot_img.height) / 2)))
+            direct_draws.append(("footer", footer_strip, (0, h - strip_h)))
+            boxes["footer"] = design_spec.Box(0.0, (h - strip_h) / h, 1.0, strip_h / h)
         else:
-            fx = margin if args.footer_align == "left" else (w - foot_img.width) / 2
-            paste_with_shadow(canvas, foot_img, (fx, h - margin - foot_img.height),
-                              blur=4, offset=(2, 3), alpha=150)
+            fx = int(w * args.footer_x) if args.footer_x is not None else (
+                margin if args.footer_align == "left" else int((w - foot_img.width) / 2))
+            fy = int(h * args.footer_y) if args.footer_y is not None else h - margin - foot_img.height
+            placements.append(Placement("footer", foot_img, fx, fy,
+                                        {"blur": 4, "dx": 2, "dy": 3, "alpha": 150}))
 
+    # ---- CTA pill ---------------------------------------------------------
     if args.cta:
         cta_size = max(28, int(w * 0.045))
         cta_shaped = shape_line(args.cta, BODY_FONT_BOLD, cta_size)
         pad_x, pad_y = int(w * 0.06), int(h * 0.018)
         pill_w, pill_h = cta_shaped.width + 2 * pad_x, cta_shaped.height + 2 * pad_y
-        pill_top = h - foot_block_h - pill_h - margin
-        pill_box = ((w - pill_w) / 2, pill_top, (w - pill_w) / 2 + pill_w, pill_top + pill_h)
-        draw_pill(ImageDraw.Draw(canvas), pill_box, hex_to_rgb(args.cta_color))
-        paste_centered(canvas, cta_shaped, hex_to_rgb(args.cta_text_color), w / 2, pill_top + pad_y)
+        if args.cta_width:
+            pill_w = max(pill_w, int(w * args.cta_width))
+        pill = Image.new("RGBA", (pill_w, pill_h), (0, 0, 0, 0))
+        draw_pill(ImageDraw.Draw(pill), (0, 0, pill_w - 1, pill_h - 1), hex_to_rgb(args.cta_color))
+        paste_centered(pill, cta_shaped, hex_to_rgb(args.cta_text_color), pill_w / 2, pad_y)
+        pill_x = int(w * args.cta_x - pill_w / 2) if args.cta_x is not None else int((w - pill_w) / 2)
+        pill_y = int(h * args.cta_y) if args.cta_y is not None else h - foot_block_h - pill_h - margin
+        placements.append(Placement("cta", pill, pill_x, pill_y))
+
+    # ---- collision resolution --------------------------------------------
+    # Everything is measured; nothing is drawn yet. This is the only point at
+    # which the real geometry of every element is known simultaneously, so it
+    # is the only point at which "does the badge sit on the CTA" is answerable.
+    # The subtext is not an independent element — it hangs off whatever the
+    # headline settles at — so it is held out of the collision pass and given
+    # its position afterwards. Leaving it in would validate it at a placeholder
+    # origin and report a collision it does not have.
+    measured = {name: box for name, box in boxes.items()}
+    for pl in placements:
+        if pl is subtext_place:
+            continue
+        measured[pl.name] = pl.box(w, h)
+
+    collision_spec = spec or {
+        "margin": args.margin_scale,
+        "canvas": {"width": w, "height": h},
+        "hierarchy": ["subject", "headline", "cta", "badge", "bullets", "logo", "subtext", "footer"],
+        "elements": {},
+    }
+    if spec:
+        subj = design_spec.resolve_subject_box(spec)
+        measured.setdefault("subject", subj)
+
+    moves = []
+    if policy == "adjust":
+        adjusted, moves = design_spec.resolve_collisions(collision_spec, measured)
+        for pl in placements:
+            new = adjusted.get(pl.name)
+            if new is None:
+                continue
+            pl.x, pl.y = int(round(new.x * w)), int(round(new.y * h))
+        measured = adjusted
+
+    # Subtext follows the headline rather than being placed independently, so it
+    # is positioned once the headline has settled — and before validation, so
+    # what gets reported and written to the manifest is where it actually lands.
+    if subtext_place is not None:
+        anchor = measured.get("headline")
+        if anchor is not None:
+            subtext_place.x = int(anchor.x * w) + int(w * 0.008)
+            subtext_place.y = int(anchor.y1 * h) + int(h * 0.006)
+        else:
+            subtext_place.x = int(w * args.label_x)
+            subtext_place.y = int(h * 0.14)
+        measured["subtext"] = subtext_place.box(w, h)
+
+    issues = design_spec.validate_layout(collision_spec, measured)
+
+    # ---- draw -------------------------------------------------------------
+    for name, img, xy in direct_draws:
+        canvas.alpha_composite(img, xy)
+
+    # Painter's order: photographic furniture first, then the hook, then the
+    # action. Matches the previous stacking so existing renders are unchanged.
+    order = {"headline": 0, "subtext": 1, "bullets": 2, "logo": 3, "badge": 4, "footer": 5, "cta": 6}
+    for pl in sorted(placements, key=lambda x: order.get(x.name, 9)):
+        pl.draw(canvas)
+
+    if args.pointer:
+        x0, y0, x1, y1 = args.pointer
+        draw_curved_arrow(canvas, (x0 * w, y0 * h), (x1 * w, y1 * h),
+                          (255, 255, 255), max(4, int(w * 0.006)))
+        measured["pointer"] = design_spec.Box(
+            min(x0, x1), min(y0, y1), abs(x1 - x0) or 0.01, abs(y1 - y0) or 0.01)
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(args.output)
     print(f"Saved {args.output} ({w}x{h})")
 
+    for move in moves:
+        print(f"  layout: {move}")
+    errors = [i for i in issues if i.severity == "error"]
+    for issue in issues:
+        print(f"  [{issue.severity}] {issue.element}: {issue.message}")
+
+    if args.manifest:
+        manifest = {
+            "output": str(args.output),
+            "background": str(args.background),
+            "canvas": {"width": w, "height": h},
+            "collision_policy": policy,
+            "boxes": {k: [round(v, 5) for v in b.as_tuple()] for k, b in measured.items()},
+            "moves": moves,
+            "issues": [i.to_dict() for i in issues],
+            "design_spec": str(args.design_spec) if args.design_spec else None,
+        }
+        Path(args.manifest).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.manifest).write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Manifest {args.manifest}")
+
+    # A bare legacy CLI call keeps its original exit code — it renders, reports
+    # any layout problems on stdout, and returns 0. Only a spec-driven call
+    # (which is running inside the quality loop) signals failure numerically.
+    return 1 if (errors and spec and policy != "off") else 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

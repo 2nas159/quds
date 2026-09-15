@@ -1,5 +1,14 @@
 # ملحمة القدس — Brand Style Guide
 
+> **Layout authority.** For *where elements sit and how big they are*, the
+> measured spec in `_templates/social-creatives/STYLE-GUIDE.md` — and its
+> machine-readable companion `brand-profile.json` — is authoritative. Those
+> numbers were measured off the real reference creatives in
+> `social/_references/`; the "Standard Creative Template Elements" table below
+> predates them and is kept only as a description of intent. Where the two
+> disagree, follow the measured spec. This file remains authoritative for
+> palette, typography, photography style and Canva production.
+
 ## Color Palette
 
 | Color | Hex | Usage |
@@ -21,7 +30,7 @@
 
 ## Logo Usage
 
-- Logo (sheep head + crossed cleavers icon, with "ملحمة القدس" wordmark) should appear in the **top-left corner** of every post/ad creative for consistency.
+- Logo (sheep head + crossed cleavers icon, with "ملحمة القدس" wordmark) appears small in **one corner** of every post/ad creative. On hero posts the measured spec puts it **top-right at ~13% of width with no backing disc** — see `_templates/social-creatives/STYLE-GUIDE.md`. A large logo on a white circular badge is the thing to avoid.
 - Maintain clear space around the logo — do not let product imagery or text overlap it.
 - Logo should be used in its white/red version depending on background contrast; never distort or recolor outside the brand palette.
 
